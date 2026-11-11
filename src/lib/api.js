@@ -50,6 +50,22 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     return normalizarLista(await response.json());
   }
 
+  // Listado paginado de un recurso (notas, guías): devuelve las filas del paginador.
+  async function listarPaginado(nombre, { companyId, branchId } = {}) {
+    const params = new URLSearchParams({ per_page: '200' });
+    if (companyId) params.set('company_id', String(companyId));
+    if (branchId) params.set('branch_id', String(branchId));
+    const response = await request(`/v1/${nombre}?${params}`);
+    return normalizarLista(await response.json());
+  }
+
+  // Catálogos (motivos, modalidades): la API responde { data: [{code, name}] }.
+  async function catalogos(ruta) {
+    const response = await request(`/v1/${ruta}`);
+    const json = await response.json();
+    return normalizarLista(json);
+  }
+
   return {
     setToken(value) {
       authToken = value;
@@ -201,6 +217,47 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Notas de crédito / débito / guías: listados y catálogos.
+    async listNotasCredito({ companyId, branchId } = {}) {
+      return listarPaginado('credit-notes', { companyId, branchId });
+    },
+
+    async listNotasDebito({ companyId, branchId } = {}) {
+      return listarPaginado('debit-notes', { companyId, branchId });
+    },
+
+    async listGuias({ companyId, branchId } = {}) {
+      return listarPaginado('dispatch-guides', { companyId, branchId });
+    },
+
+    async motivosNotaCredito() {
+      return catalogos('credit-notes/catalogs/motivos');
+    },
+
+    async motivosNotaDebito() {
+      return catalogos('debit-notes/catalogs/motivos');
+    },
+
+    async motivosTrasladoGuia() {
+      return catalogos('dispatch-guides/catalogs/transfer-reasons');
+    },
+
+    async modalidadesTrasladoGuia() {
+      return catalogos('dispatch-guides/catalogs/transport-modes');
+    },
+
+    // Descarga genérica de un artefacto (xml|cdr|pdf) de notas y guías.
+    async descargarDocumento(recursoNombre, id, format) {
+      const response = await request(`/v1/${recursoNombre}/${id}/download-${format}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+      const fallbackExt = format === 'pdf' ? 'pdf' : format === 'cdr' ? 'zip' : 'xml';
+      const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `${recursoNombre}-${id}.${fallbackExt}`;
+      saveBlob(blob, filename);
+      return filename;
+    },
+
     // Emisión masiva desde CSV/XLSX. Devuelve el resumen con emitidos y errores.
     async cargaMasiva({ companyId, branchId, file, enviarSunat = false }) {
       const form = new FormData();
@@ -273,6 +330,13 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       const response = await request(`/v1/branches?${params}`);
       const json = await response.json();
       return json?.data ?? [];
+    },
+
+    // Clientes de una empresa (destinatarios de guías y notas).
+    async listClients(companyId) {
+      const response = await request(`/v1/companies/${companyId}/clients`);
+      const json = await response.json();
+      return normalizarLista(json);
     },
 
     // Tipos de documento SUNAT que admiten serie.

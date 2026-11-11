@@ -25,6 +25,7 @@ npm test         # pruebas de los generadores PLE
 | Registro de Compras | Comprobantes recibidos **por empresa**: alta manual o importando el XML UBL del proveedor. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
+| Notas y Guías | Emite notas de crédito/débito y guías de remisión; envía a SUNAT y descarga XML/CDR/PDF. |
 | Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, la propuesta SIRE del servidor y un Excel corto (ventas y compras). |
 | Series por sucursal | Configura las series (F001, B001…) y el correlativo de cada tipo de documento por sucursal. |
 | Importar Histórico | Carga el histórico de ventas y compras de períodos anteriores desde el TXT del PLE o una plantilla CSV/XLSX. |
@@ -211,6 +212,36 @@ DELETE {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
 Cada sucursal lleva su propio numerador, de modo que dos locales pueden emitir
 facturas con series distintas sin chocar entre sí.
 
+## Notas y guías
+
+La pestaña **Notas y Guías** emite los tres documentos que acompañan a la
+facturación y deja el camino armado para nuevas series:
+
+- **Notas de crédito** (07) y **notas de débito** (08): se elige el tipo de
+  documento afectado (factura o boleta), su número, el **motivo** del catálogo
+  SUNAT (códigos 01–13 y 01–11 respectivamente) y una descripción. El cliente se
+  indica con tipo/número de documento y razón social.
+- **Guías de remisión** (09): destinatario (cliente de la empresa), motivo y
+  modalidad de traslado, direcciones de partida y llegada, peso y bultos, y los
+  datos de transporte según la modalidad (transportista para la pública,
+  conductor y placa para la privada).
+
+La **serie** se escribe a mano (se administra en la pestaña *Series por
+sucursal*) y el **correlativo lo asigna el backend** por sucursal y tipo de
+documento. Tras emitir, cada documento se puede **enviar a SUNAT** y descargar
+en **XML/CDR/PDF** desde la tabla de emitidos.
+
+```
+POST {VITE_API_URL}/v1/credit-notes            (nota de crédito)
+POST {VITE_API_URL}/v1/debit-notes             (nota de débito)
+POST {VITE_API_URL}/v1/dispatch-guides         (guía de remisión)
+POST {VITE_API_URL}/v1/{recurso}/{id}/send-sunat
+GET  {VITE_API_URL}/v1/{recurso}/{id}/download-{xml,cdr,pdf}
+GET  {VITE_API_URL}/v1/credit-notes/catalogs/motivos
+GET  {VITE_API_URL}/v1/debit-notes/catalogs/motivos
+GET  {VITE_API_URL}/v1/dispatch-guides/catalogs/{transfer-reasons,transport-modes}
+```
+
 ## Importar Histórico
 
 La pestaña **Importar Histórico** carga los comprobantes de meses o años
@@ -259,6 +290,7 @@ src/
   BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
   CargaMasiva.jsx  emisión masiva de comprobantes (plantilla CSV/XLSX)
   ImportacionHistorica.jsx  importación de períodos anteriores (PLE / plantilla)
+  NotasGuiasPanel.jsx  emisión de notas de crédito/débito y guías de remisión
   SeriesPanel.jsx  series y correlativos por sucursal
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind
