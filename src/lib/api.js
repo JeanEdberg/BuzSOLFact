@@ -101,6 +101,19 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return data;
     },
 
+    // Onboarding self-service: registra una empresa nueva y devuelve un token
+    // ya utilizable (empresa + sucursal principal + usuario admin).
+    async register(payload) {
+      const esFormData = payload instanceof FormData;
+      const response = await request('/auth/register', {
+        method: 'POST',
+        body: esFormData ? payload : JSON.stringify(payload),
+      });
+      const data = await response.json();
+      authToken = data.access_token ?? data.token ?? authToken;
+      return data;
+    },
+
     async me() {
       const response = await request('/v1/auth/me');
       return response.json();
@@ -198,8 +211,11 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
 
     // Envía a SUNAT un comprobante ya emitido. tipo: 'invoices'|'boletas'|
     // 'credit-notes'|'debit-notes'|'dispatch-guides'.
-    async enviarSunat(recurso, id) {
-      const response = await request(`/v1/${recurso}/${id}/send-sunat`, { method: 'POST' });
+    async enviarSunat(recurso, id, { async: asincrono = false } = {}) {
+      const response = await request(`/v1/${recurso}/${id}/send-sunat`, {
+        method: 'POST',
+        body: asincrono ? JSON.stringify({ async: true }) : undefined,
+      });
       const json = await response.json();
       return json?.data ?? json;
     },

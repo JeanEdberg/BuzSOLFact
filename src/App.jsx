@@ -369,44 +369,156 @@ function LibrosPanel({ ventas, compras, api, companyId, conectado }) {
   );
 }
 
-function ConexionPanel({ onConectar, conectado, cargando, error, token }) {
+function ConexionPanel({ onConectar, onRegistrar, conectado, cargando, error, token }) {
+  const [modo, setModo] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [form, setForm] = useState({
+    name: '',
+    razon_social: '',
+    ruc: '',
+    direccion: '',
+    ubigeo: '',
+    distrito: '',
+    provincia: '',
+    departamento: '',
+    usuario_sol: '',
+    clave_sol: '',
+  });
+  const [certificado, setCertificado] = useState(null);
+
+  const setCampo = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+
+  function registrar() {
+    const payload = { email, password, ...form };
+    if (certificado) {
+      const fd = new FormData();
+      Object.entries(payload).forEach(([k, v]) => fd.append(k, v));
+      fd.append('certificado_pem', certificado);
+      onRegistrar(fd);
+    } else {
+      onRegistrar(payload);
+    }
+  }
+
+  const inputCls = 'w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
 
   return (
     <div className="max-w-lg space-y-4">
       <h3 className="text-xl font-bold">Conexión a la API de facturación</h3>
-      <p className="text-sm text-slate-400">
-        Ingresa con las credenciales del backend Laravel. Al conectar, los comprobantes
-        emitidos se cargan desde <code>/api/v1/invoices</code> y <code>/api/v1/boletas</code>.
-      </p>
+      <div className="flex gap-2">
+        {[['login', 'Ingresar'], ['registro', 'Crear empresa']].map(([valor, texto]) => (
+          <button
+            key={valor}
+            onClick={() => setModo(valor)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${modo === valor ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+          >
+            {texto}
+          </button>
+        ))}
+      </div>
+
       <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Correo</label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-          />
-        </div>
-        <button
-          onClick={() => onConectar({ email, password })}
-          disabled={cargando}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50"
-        >
-          {cargando ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />}
-          {cargando ? 'Conectando…' : 'Conectar y cargar'}
-        </button>
+        {modo === 'login' ? (
+          <>
+            <p className="text-sm text-slate-400">
+              Ingresa con las credenciales del backend Laravel. Al conectar, los comprobantes
+              emitidos se cargan desde <code>/api/v1/invoices</code> y <code>/api/v1/boletas</code>.
+            </p>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Correo</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+            </div>
+            <button
+              onClick={() => onConectar({ email, password })}
+              disabled={cargando}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50"
+            >
+              {cargando ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />}
+              {cargando ? 'Conectando…' : 'Conectar y cargar'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-400">
+              Registra tu empresa y empieza a emitir. Se crean tu empresa, su sucursal principal
+              y tu usuario administrador. Las credenciales SOL y el certificado son opcionales y
+              puedes completarlos después en Accesos SOL.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Tu nombre</label>
+                <input value={form.name} onChange={setCampo('name')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Razón social</label>
+                <input value={form.razon_social} onChange={setCampo('razon_social')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">RUC (11 dígitos)</label>
+                <input value={form.ruc} onChange={setCampo('ruc')} maxLength={11} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Correo</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Dirección</label>
+                <input value={form.direccion} onChange={setCampo('direccion')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Ubigeo (6 dígitos)</label>
+                <input value={form.ubigeo} onChange={setCampo('ubigeo')} maxLength={6} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Distrito</label>
+                <input value={form.distrito} onChange={setCampo('distrito')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Provincia</label>
+                <input value={form.provincia} onChange={setCampo('provincia')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Departamento</label>
+                <input value={form.departamento} onChange={setCampo('departamento')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Usuario SOL (opcional)</label>
+                <input value={form.usuario_sol} onChange={setCampo('usuario_sol')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Clave SOL (opcional)</label>
+                <input type="password" value={form.clave_sol} onChange={setCampo('clave_sol')} className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Certificado digital (.pem, opcional)</label>
+              <input
+                type="file"
+                accept=".pem,.crt,.cer,.txt"
+                onChange={(e) => setCertificado(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-slate-300"
+              />
+            </div>
+            <button
+              onClick={registrar}
+              disabled={cargando}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {cargando ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              {cargando ? 'Registrando…' : 'Crear empresa y entrar'}
+            </button>
+          </>
+        )}
+
         {conectado && (
           <p className="flex items-center gap-2 text-sm text-emerald-400">
             <CheckCircle2 size={16} /> Conectado. Token: {token ? `${token.slice(0, 8)}…` : '—'}
@@ -435,34 +547,57 @@ export default function App() {
   const [cargando, setCargando] = useState(false);
   const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  // Envío asíncrono: el backend encola el comprobante y reintenta solo.
+  const [envioAsync, setEnvioAsync] = useState(false);
 
   async function conectar({ email, password }) {
     setCargando(true);
     setErrorConexion(null);
     try {
       const sesion = await api.login({ email, password });
-      setToken(sesion.access_token ?? sesion.token ?? null);
-      const idEmpresa = sesion.user?.company_id ?? null;
-      setCompanyId(idEmpresa);
-
-      const emitidos = await api.listVentas();
-      setVentas(emitidos.map((d) => mapVenta(d)));
-
-      // Compras (recibidos): la API las expone por empresa.
-      let recibidos = [];
-      if (idEmpresa) {
-        const res = await api.listCompras({ companyId: idEmpresa });
-        recibidos = res.items ?? [];
-      }
-      setCompras(recibidos.map((d) => mapCompra(d)));
-
-      setFuente('api');
-      setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) y ${recibidos.length} recibido(s) cargado(s) desde la API.`);
+      await cargarTrasSesion(sesion);
+      setAviso('Sesión iniciada correctamente.');
     } catch (error) {
       setErrorConexion(error.message);
     } finally {
       setCargando(false);
     }
+  }
+
+  // Onboarding self-service: crea la empresa y deja la sesión lista.
+  async function registrar(payload) {
+    setCargando(true);
+    setErrorConexion(null);
+    try {
+      const sesion = await api.register(payload);
+      await cargarTrasSesion(sesion);
+      setAviso(`Empresa ${sesion.company?.razon_social ?? ''} registrada. Ya puedes emitir comprobantes.`);
+    } catch (error) {
+      setErrorConexion(error.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // Carga los datos del backend una vez que hay token (login o registro).
+  async function cargarTrasSesion(sesion) {
+    setToken(sesion.access_token ?? sesion.token ?? null);
+    const idEmpresa = sesion.user?.company_id ?? null;
+    setCompanyId(idEmpresa);
+
+    const emitidos = await api.listVentas();
+    setVentas(emitidos.map((d) => mapVenta(d)));
+
+    // Compras (recibidos): la API las expone por empresa.
+    let recibidos = [];
+    if (idEmpresa) {
+      const res = await api.listCompras({ companyId: idEmpresa });
+      recibidos = res.items ?? [];
+    }
+    setCompras(recibidos.map((d) => mapCompra(d)));
+
+    setFuente('api');
+    setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) y ${recibidos.length} recibido(s) cargado(s) desde la API.`);
   }
 
   function volverADemo() {
@@ -543,7 +678,11 @@ export default function App() {
     setAviso(null);
     try {
       const recurso = String(documento.tipo_documento).startsWith('03') ? 'boletas' : 'invoices';
-      await api.enviarSunat(recurso, documento.id);
+      await api.enviarSunat(recurso, documento.id, { async: envioAsync });
+      if (envioAsync) {
+        setAviso(`Comprobante ${documento.serie}-${documento.numero} encolado: se enviará a SUNAT con reintentos automáticos.`);
+        return;
+      }
       const emitidos = await api.listVentas();
       setVentas(emitidos.map((d) => mapVenta(d)));
       setAviso(`Comprobante ${documento.serie}-${documento.numero} enviado a SUNAT.`);
@@ -654,13 +793,23 @@ export default function App() {
             <div className="space-y-4">
               <div className="flex flex-wrap justify-between items-center gap-3">
                 <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
-                <input
-                  type="text"
-                  value={busqueda}
-                  onChange={(e) => setBusqueda(e.target.value)}
-                  placeholder="Buscar serie o cliente..."
-                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                />
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-300" title="Encola el envío y reintenta solo si SUNAT falla o está lento">
+                    <input
+                      type="checkbox"
+                      checked={envioAsync}
+                      onChange={(e) => setEnvioAsync(e.target.checked)}
+                    />
+                    Envío en segundo plano (con reintentos)
+                  </label>
+                  <input
+                    type="text"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar serie o cliente..."
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
               </div>
               <ComprobantesTable
                 documentos={filtrados(ventas)}
@@ -745,6 +894,7 @@ export default function App() {
           {activeTab === 'conexion' && (
             <ConexionPanel
               onConectar={conectar}
+              onRegistrar={registrar}
               conectado={fuente === 'api'}
               cargando={cargando}
               error={errorConexion}
