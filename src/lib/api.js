@@ -26,7 +26,10 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
   async function request(path, options = {}) {
     const headers = { Accept: 'application/json', ...(options.headers || {}) };
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
-    if (options.body) headers['Content-Type'] = 'application/json';
+    // FormData debe llevar su propio Content-Type (con el boundary del multipart).
+    if (options.body && !(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
     if (!response.ok) {
@@ -65,6 +68,36 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     async me() {
       const response = await request('/v1/auth/me');
       return response.json();
+    },
+
+    // Empresas registradas (multiempresa). Cada una tiene sus propias
+    // credenciales SOL secundarias y su certificado digital.
+    async listCompanies() {
+      const response = await request('/v1/companies');
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async getCompany(id) {
+      const response = await request(`/v1/companies/${id}`);
+      const json = await response.json();
+      return json?.data?.company ?? json?.data ?? json;
+    },
+
+    // Actualiza los datos de la empresa (incluidas las credenciales SOL).
+    // Acepta un objeto plano o un FormData (cuando se sube el certificado).
+    // Laravel no procesa archivos en PUT: con FormData se usa POST + _method=PUT.
+    async updateCompany(id, payload) {
+      let options;
+      if (payload instanceof FormData) {
+        if (!payload.has('_method')) payload.append('_method', 'PUT');
+        options = { method: 'POST', body: payload };
+      } else {
+        options = { method: 'PUT', body: JSON.stringify(payload) };
+      }
+      const response = await request(`/v1/companies/${id}`, options);
+      const json = await response.json();
+      return json?.data ?? json;
     },
 
     // La PWA no puede leer tipoCambio.txt de SUNAT directamente (CORS). El backend

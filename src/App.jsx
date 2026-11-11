@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2, RefreshCw,
-  Download, AlertCircle, BookOpen, Plug, Loader2,
+  Download, AlertCircle, BookOpen, Plug, Loader2, KeyRound,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
@@ -12,6 +12,7 @@ import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
   empresa, notificaciones, comprobantesVenta, comprobantesCompra,
 } from './lib/sampleData.js';
+import AccesosSol from './AccesosSol.jsx';
 
 const api = createApi();
 
@@ -26,6 +27,7 @@ const TABS = [
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
+  { id: 'accesos-sol', label: 'Accesos SOL', icon: KeyRound },
   { id: 'conexion', label: 'Conexión API', icon: Plug },
 ];
 
@@ -496,6 +498,7 @@ export default function App() {
           )}
 
           {activeTab === 'libros' && <LibrosPanel ventas={ventas} compras={compras} />}
+          {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
 
           {activeTab === 'conexion' && (
             <ConexionPanel

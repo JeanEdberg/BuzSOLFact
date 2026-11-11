@@ -26,6 +26,7 @@ npm test         # pruebas de los generadores PLE
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
 | Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, más un Excel corto (ventas y compras). |
+| Accesos SOL | Credenciales SOL (SUNAT) y certificado digital **por empresa**, ambiente y leyenda de Amazonía. |
 
 ## Descarga de comprobantes
 
@@ -136,6 +137,20 @@ Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía
 El `.xlsx` se genera en el navegador sin dependencias (`src/lib/xlsx.js`, un
 escritor ZIP + OOXML mínimo) y lo consume `src/lib/libroCorto.js`.
 
+## Accesos SOL (multiempresa)
+
+La pestaña **Accesos SOL** permite configurar, para cada empresa, sus credenciales
+SOL secundarias de SUNAT, su certificado digital y su ambiente (beta o producción).
+También activa la leyenda de exoneración del IGV de la Amazonía (catálogo n.º 52),
+eligiendo el tipo de operación (2001 bienes, 2002 servicios, 2003 contratos).
+
+Cada empresa tiene sus propias credenciales y su **propio certificado**; el backend
+resuelve el certificado por RUC, de modo que dar de alta una segunda empresa no
+sobrescribe el de la primera.
+
+La clave SOL y la clave del certificado nunca se muestran: si se dejan vacías al
+guardar, se conserva el valor existente.
+
 ## Estructura
 
 ```
@@ -143,6 +158,7 @@ index.html
 public/            manifest.json, sw.js
 src/
   App.jsx          interfaz (pestañas, descargas, panel de libros)
+  AccesosSol.jsx   gestión multiempresa de credenciales SOL y certificado
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind
   lib/
