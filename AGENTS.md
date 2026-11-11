@@ -304,3 +304,17 @@ Notas de entorno y convenciones del backend:
 - **Tests**: los endpoints de documentos están bajo `auth:sanctum`; las pruebas
   deben autenticar (`$this->actingAs(User::factory()->create())`). Los factories de
   notas y guías ya existían; el de guías tenía una coma faltante tras `vehiculo`.
+
+## Onboarding self-service y envío asíncrono
+
+- **Registro desde la PWA**: la pestaña *Conexión* tiene dos modos (`Ingresar` /
+  `Crear empresa`). El registro llama a `POST /api/auth/register` y deja la
+  sesión lista (empresa + sucursal + usuario admin). `api.register(payload)`
+  acepta JSON o `FormData` cuando se adjunta el certificado `.pem`.
+- **Envío en segundo plano**: `api.enviarSunat(recurso, id, { async: true })`
+  manda `{"async": true}`; el backend responde **202** y encola
+  `SendDocumentToSunatJob` (reintentos automáticos). La lista de facturas tiene
+  el interruptor *Envío en segundo plano (con reintentos)*.
+- **Certificado por empresa (backend)**: cada RUC firma con su propio PEM
+  (`Company::certificadoContenido()`), ya **no** con un archivo fijo compartido.
+  Al crear empresa sin certificado, `usuario_sol`/`clave_sol` son opcionales.
