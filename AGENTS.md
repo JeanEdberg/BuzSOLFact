@@ -18,11 +18,18 @@ SUNAT/SUNAFIL, descarga XML/PDF/CDR y Libros Electrónicos).
 npm install
 npm run dev      # puerto 12000
 npm run build
-npm test         # vitest (src/lib/ple.test.js)
+npm test         # vitest (src/lib/*.test.js)
 ```
 
 ## Convenciones
 
+- El cliente de la API (`src/lib/api.js`) asume el contrato real del backend:
+  login con `access_token`, `invoices` paginado y `boletas` como array.
+  `src/lib/mapper.js` traduce el comprobante a la fila de libro y normaliza
+  fechas ISO y correlativos a 8 dígitos.
+- **El service worker solo se registra en producción.** En desarrollo el
+  cache-first de Vite sirve módulos antiguos y oculta los cambios; `main.jsx`
+  desregistra cualquier SW previo en dev.
 - El generador PLE (`src/lib/ple.js`) sigue el Anexo N.º 2 de la **RS
   112-2021/SUNAT**: campos separados por `|`, línea terminada en `|`, fechas
   `DD/MM/AAAA`, montos a 2 decimales, NC/ND con signo negativo.

@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2, RefreshCw,
-  Download, AlertCircle, BookOpen,
+  Download, AlertCircle, BookOpen, Plug, Loader2,
 } from 'lucide-react';
-import { api, downloadText } from './lib/api.js';
+import { createApi, downloadText } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
+import { mapVenta } from './lib/mapper.js';
 import {
   empresa, notificaciones, comprobantesVenta, comprobantesCompra,
 } from './lib/sampleData.js';
+
+const api = createApi();
 
 const TABS = [
   { id: 'buzon', label: 'Buzón SUNAT / SUNAFIL', icon: Bell },
@@ -16,6 +19,7 @@ const TABS = [
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
+  { id: 'conexion', label: 'Conexión API', icon: Plug },
 ];
 
 const money = (value) =>
@@ -48,18 +52,28 @@ function EstadoBadge({ estado }) {
   const map = {
     ACEPTADO: 'bg-emerald-500/20 text-emerald-400',
     PENDIENTE: 'bg-amber-500/20 text-amber-400',
+    ENVIADO: 'bg-sky-500/20 text-sky-400',
+    PROCESANDO: 'bg-sky-500/20 text-sky-400',
     RECHAZADO: 'bg-red-500/20 text-red-400',
+    ERROR: 'bg-red-500/20 text-red-400',
   };
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${map[estado] ?? 'bg-slate-600 text-slate-300'}`}>
-      {estado}
+      {estado ?? '—'}
     </span>
   );
 }
 
-function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }) {
+function ComprobantesTable({ documentos, contraparte, onDownload, busy }) {
+  if (!documentos.length) {
+    return (
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-8 text-center text-sm text-slate-400">
+        No hay comprobantes para mostrar.
+      </div>
+    );
+  }
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
@@ -73,7 +87,7 @@ function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }
         </thead>
         <tbody className="divide-y divide-slate-700 text-sm">
           {documentos.map((d) => (
-            <tr key={d.id} className="hover:bg-slate-700/50">
+            <tr key={`${d.tipo_documento}-${d.id}`} className="hover:bg-slate-700/50">
               <td className="p-4 font-mono font-medium text-blue-400">{d.serie}-{d.numero}</td>
               <td className="p-4">{(d.cliente ?? d.proveedor)?.razon_social}</td>
               <td className="p-4">{d.fecha_emision}</td>
@@ -88,32 +102,42 @@ function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }
   );
 }
 
-function LibrosPanel() {
+const FORMATOS = {
+  ple: {
+    etiqueta: 'PLE',
+    detalle: 'Histórico (RS 112-2021)',
+    ventas: (rows, ctx) => buildVentas141(rows, ctx),
+    compras: (rows, ctx) => buildCompras81(rows, ctx),
+  },
+  sire: {
+    etiqueta: 'SIRE',
+    detalle: 'Vigente (Anexos 3 y 11)',
+    ventas: (rows, ctx) => buildRvie(rows.map((r) => ({ ...r, periodo: ctx.periodo })), ctx),
+    compras: (rows, ctx) => buildRce(rows.map((r) => ({ ...r, periodo: ctx.periodo })), ctx),
+  },
+};
+
+function LibrosPanel({ ventas, compras }) {
   const [periodo, setPeriodo] = useState('2026-11');
   const [mensaje, setMensaje] = useState(null);
 
-  const resumenVentas = useMemo(() => summarize(comprobantesVenta, 'ventas'), []);
-  const resumenCompras = useMemo(() => summarize(comprobantesCompra, 'compras'), []);
+  // El periodo del selector es 'YYYY-MM'; las fechas vienen como 'YYYY-MM-DD'.
+  const filtrar = (rows) => rows.filter((r) => (r.fecha_emision ?? '').startsWith(periodo));
+  const ventasPeriodo = useMemo(() => filtrar(ventas), [ventas, periodo]);
+  const comprasPeriodo = useMemo(() => filtrar(compras), [compras, periodo]);
 
-  // Cada libro se ofrece en los dos formatos: PLE (histórico) y SIRE (vigente).
-  const FORMATOS = {
-    ple: {
-      etiqueta: 'PLE',
-      detalle: 'Histórico (RS 112-2021)',
-      ventas: (rows) => buildVentas141(rows, { ruc: empresa.ruc, periodo }),
-      compras: (rows) => buildCompras81(rows, { ruc: empresa.ruc, periodo }),
-    },
-    sire: {
-      etiqueta: 'SIRE',
-      detalle: 'Vigente (Anexos 3 y 11)',
-      ventas: (rows) => buildRvie(rows.map((r) => ({ ...r, periodo })), { ruc: empresa.ruc, razon_social: empresa.razon_social }),
-      compras: (rows) => buildRce(rows.map((r) => ({ ...r, periodo })), { ruc: empresa.ruc, razon_social: empresa.razon_social }),
-    },
-  };
+  const resumenVentas = useMemo(() => summarize(ventasPeriodo, 'ventas'), [ventasPeriodo]);
+  const resumenCompras = useMemo(() => summarize(comprasPeriodo, 'compras'), [comprasPeriodo]);
+
+  // La API no persiste el tipo de cambio: avisamos si falta en moneda extranjera.
+  const faltaTc = [...ventasPeriodo, ...comprasPeriodo].filter(
+    (r) => r.moneda && r.moneda !== 'PEN' && !r.tipo_cambio,
+  ).length;
 
   function generar(tipo, formato) {
-    const rows = tipo === 'ventas' ? comprobantesVenta : comprobantesCompra;
-    const built = FORMATOS[formato][tipo](rows);
+    const rows = tipo === 'ventas' ? ventasPeriodo : comprasPeriodo;
+    const ctx = { ruc: empresa.ruc, razon_social: empresa.razon_social, periodo };
+    const built = FORMATOS[formato][tipo](rows, ctx);
     downloadText(built.filename, built.content);
     setMensaje(`Generado ${built.filename} · formato ${FORMATOS[formato].etiqueta} (${rows.length} registros).`);
   }
@@ -141,6 +165,13 @@ function LibrosPanel() {
         </p>
       </div>
 
+      {faltaTc > 0 && (
+        <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
+          <AlertCircle size={16} /> {faltaTc} comprobante(s) en moneda extranjera sin tipo de cambio.
+          La API no lo persiste; el registro puede ser rechazado por SUNAT.
+        </div>
+      )}
+
       {mensaje && (
         <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
           <CheckCircle2 size={16} /> {mensaje}
@@ -152,7 +183,7 @@ function LibrosPanel() {
           <div key={c.tipo} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-3">
             <div>
               <h3 className="font-semibold">{c.titulo}</h3>
-              <p className="text-xs text-slate-400">{c.resumen.registros} registros</p>
+              <p className="text-xs text-slate-400">{c.resumen.registros} registros en {periodo}</p>
             </div>
             <dl className="text-sm space-y-1">
               <div className="flex justify-between"><dt className="text-slate-400">Base gravada</dt><dd>{money(c.resumen.bi_gravada)}</dd></div>
@@ -172,8 +203,9 @@ function LibrosPanel() {
                 <button
                   key={key}
                   onClick={() => generar(c.tipo, key)}
+                  disabled={!c.resumen.registros}
                   title={f.detalle}
-                  className="flex items-center justify-center gap-2 bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-500"
+                  className="flex items-center justify-center gap-2 bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Download size={15} /> {f.etiqueta}
                 </button>
@@ -186,11 +218,100 @@ function LibrosPanel() {
   );
 }
 
+function ConexionPanel({ onConectar, conectado, cargando, error, token }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <h3 className="text-xl font-bold">Conexión a la API de facturación</h3>
+      <p className="text-sm text-slate-400">
+        Ingresa con las credenciales del backend Laravel. Al conectar, los comprobantes
+        emitidos se cargan desde <code>/api/v1/invoices</code> y <code>/api/v1/boletas</code>.
+      </p>
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Correo</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+          />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+          />
+        </div>
+        <button
+          onClick={() => onConectar({ email, password })}
+          disabled={cargando}
+          className="w-full flex items-center justify-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50"
+        >
+          {cargando ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />}
+          {cargando ? 'Conectando…' : 'Conectar y cargar'}
+        </button>
+        {conectado && (
+          <p className="flex items-center gap-2 text-sm text-emerald-400">
+            <CheckCircle2 size={16} /> Conectado. Token: {token ? `${token.slice(0, 8)}…` : '—'}
+          </p>
+        )}
+        {error && (
+          <p className="flex items-center gap-2 text-sm text-red-400">
+            <AlertCircle size={16} /> {error}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('buzon');
   const [busy, setBusy] = useState(null);
   const [aviso, setAviso] = useState(null);
+
+  const [ventas, setVentas] = useState(comprobantesVenta);
+  const [compras, setCompras] = useState(comprobantesCompra);
+  const [fuente, setFuente] = useState('demo');
+  const [token, setToken] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+
+  async function conectar({ email, password }) {
+    setCargando(true);
+    setErrorConexion(null);
+    try {
+      const sesion = await api.login({ email, password });
+      setToken(sesion.access_token ?? sesion.token ?? null);
+      const emitidos = await api.listVentas();
+      setVentas(emitidos.map((d) => mapVenta(d)));
+      // La API de facturación no expone comprobantes recibidos; se conserva la
+      // fuente local para compras hasta conectar un módulo de compras.
+      setCompras(comprobantesCompra);
+      setFuente('api');
+      setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) cargado(s) desde la API.`);
+    } catch (error) {
+      setErrorConexion(error.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  function volverADemo() {
+    setVentas(comprobantesVenta);
+    setCompras(comprobantesCompra);
+    setFuente('demo');
+    setToken(null);
+    api.setToken(null);
+    setAviso('Se restauraron los datos de demostración.');
+  }
 
   async function handleDownload(documento, format) {
     setBusy(`${documento.id}-${format}`);
@@ -205,12 +326,13 @@ export default function App() {
     }
   }
 
-  const guiasFiltradas = comprobantesVenta.filter((d) => {
+  const filtrados = (rows) => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return true;
-    return `${d.serie}-${d.numero}`.toLowerCase().includes(q)
-      || (d.cliente?.razon_social ?? '').toLowerCase().includes(q);
-  });
+    if (!q) return rows;
+    return rows.filter((d) =>
+      `${d.serie}-${d.numero}`.toLowerCase().includes(q)
+      || (d.cliente ?? d.proveedor)?.razon_social?.toLowerCase().includes(q));
+  };
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
@@ -230,13 +352,21 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="p-4 border-t border-slate-700">
+          <button
+            onClick={volverADemo}
+            className="w-full text-xs text-slate-400 hover:text-slate-200 underline"
+          >
+            Restaurar datos demo
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6">
           <h2 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')}</h2>
-          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/30">
-            Sistema Conectado
+          <span className={`text-xs px-3 py-1 rounded-full border ${fuente === 'api' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-600/40 text-slate-300 border-slate-600'}`}>
+            {fuente === 'api' ? 'API conectada' : 'Datos demo'}
           </span>
         </header>
 
@@ -276,7 +406,7 @@ export default function App() {
             <div className="space-y-4">
               <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
               <ComprobantesTable
-                documentos={comprobantesCompra}
+                documentos={filtrados(compras)}
                 contraparte="Proveedor"
                 onDownload={handleDownload}
                 busy={busy}
@@ -288,7 +418,7 @@ export default function App() {
             <div className="space-y-4">
               <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
               <ComprobantesTable
-                documentos={comprobantesVenta}
+                documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
                 busy={busy}
@@ -314,7 +444,7 @@ export default function App() {
                 </div>
               </div>
               <ComprobantesTable
-                documentos={guiasFiltradas}
+                documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
                 busy={busy}
@@ -322,7 +452,17 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'libros' && <LibrosPanel />}
+          {activeTab === 'libros' && <LibrosPanel ventas={ventas} compras={compras} />}
+
+          {activeTab === 'conexion' && (
+            <ConexionPanel
+              onConectar={conectar}
+              conectado={fuente === 'api'}
+              cargando={cargando}
+              error={errorConexion}
+              token={token}
+            />
+          )}
         </div>
       </main>
     </div>

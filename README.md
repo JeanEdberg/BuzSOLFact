@@ -33,14 +33,34 @@ Los botones XML / PDF / CDR llaman a la API de facturación electrónica
 (Laravel + Greenter):
 
 ```
-GET {VITE_API_URL}/v1/invoices/{id}/download-xml
-GET {VITE_API_URL}/v1/invoices/{id}/download-cdr
-GET {VITE_API_URL}/v1/invoices/{id}/download-pdf
-GET {VITE_API_URL}/v1/boletas/{id}/download-{xml|cdr|pdf}
+POST {VITE_API_URL}/auth/login              -> { access_token, user }
+GET  {VITE_API_URL}/v1/invoices             -> paginador
+GET  {VITE_API_URL}/v1/boletas              -> array
+GET  {VITE_API_URL}/v1/invoices/{id}/download-xml|cdr|pdf
+GET  {VITE_API_URL}/v1/boletas/{id}/download-xml|cdr|pdf
 ```
 
 Configura la URL del backend con la variable `VITE_API_URL` (por defecto `/api`).
-La autenticación usa Laravel Sanctum (`POST /auth/login`).
+La autenticación usa Laravel Sanctum.
+
+### Conectar la API
+
+La pestaña **Conexión API** permite iniciar sesión con las credenciales del
+backend. Al conectar, los comprobantes emitidos se cargan desde la API y se
+mapean (`src/lib/mapper.js`) a las filas que consumen los generadores de libros.
+El botón **Restaurar datos demo** vuelve a la fuente local.
+
+Notas del contrato real de la API:
+
+- El login devuelve `access_token` (no `token`).
+- `GET /v1/invoices` devuelve un **paginador** (`data.data[]`); `GET /v1/boletas`
+  devuelve un **array plano** (`data[]`). El cliente normaliza ambos.
+- **La API no persiste el tipo de cambio** (solo existe dentro del JSON del
+  detalle al emitir). Si hay comprobantes en moneda extranjera sin tipo de
+  cambio, el panel de libros lo advierte; SUNAT puede rechazar el registro.
+- La API solo emite comprobantes propios: no expone comprobantes recibidos, así
+  que el Registro de Compras se alimenta de la fuente local hasta que exista un
+  módulo de compras.
 
 ## Libros Electrónicos (PLE y SIRE)
 
@@ -76,8 +96,9 @@ src/
   index.css        Tailwind
   lib/
     api.js         cliente de la API de facturación
+    mapper.js      comprobante de la API -> fila de libro
     ple.js         generadores PLE 14.1 / 8.1
     sire.js        generadores SIRE RVIE / RCE
-    *.test.js      pruebas de los generadores
+    *.test.js      pruebas de los generadores y del mapeador
     sampleData.js  datos de demostración
 ```

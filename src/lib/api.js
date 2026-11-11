@@ -1,10 +1,13 @@
 // Cliente para la API de facturación electrónica SUNAT.
-// Los endpoints de descarga siguen la convención del backend Laravel:
-//   GET /api/v1/invoices/{id}/download-xml
-//   GET /api/v1/invoices/{id}/download-cdr
-//   GET /api/v1/invoices/{id}/download-pdf
-//   GET /api/v1/boletas/{id}/download-...
-// El token se obtiene con POST /api/auth/login (Laravel Sanctum).
+// Endpoints reales del backend (Laravel 12 + Sanctum):
+//   POST /api/auth/login                      -> { access_token, user }
+//   GET  /api/v1/invoices                     -> paginator ({ data: { data: [...] } })
+//   GET  /api/v1/boletas                      -> array plano ({ data: [...] })
+//   GET  /api/v1/invoices/{id}/download-xml|cdr|pdf
+//   GET  /api/v1/boletas/{id}/download-xml|cdr|pdf
+//   GET  /api/v1/auth/me
+
+import { normalizarLista, recurso } from './mapper.js';
 
 const BASE_URL = import.meta.env?.VITE_API_URL || '/api';
 
@@ -14,11 +17,6 @@ export class SunatApiError extends Error {
     this.name = 'SunatApiError';
     this.status = status;
   }
-}
-
-function resourceFor(tipoDocumento) {
-  // 01 Factura, 03 Boleta; el resto de comprobantes se exponen bajo invoices.
-  return tipoDocumento === '03' ? 'boletas' : 'invoices';
 }
 
 export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
@@ -40,6 +38,14 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     return response;
   }
 
+  async function listar(tipo, { desde, hasta, perPage = 500 } = {}) {
+    const params = new URLSearchParams({ per_page: String(perPage) });
+    if (desde) params.set('fecha_desde', desde);
+    if (hasta) params.set('fecha_hasta', hasta);
+    const response = await request(`/v1/${recurso({ tipo_documento: tipo })}?${params}`);
+    return normalizarLista(await response.json());
+  }
+
   return {
     setToken(value) {
       authToken = value;
@@ -51,23 +57,31 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
         body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
-      authToken = data.token ?? data.access_token ?? authToken;
+      authToken = data.access_token ?? data.token ?? authToken;
       return data;
     },
 
-    async listDocumentos({ tipo = '01', desde, hasta } = {}) {
-      const params = new URLSearchParams();
-      if (desde) params.set('fecha_desde', desde);
-      if (hasta) params.set('fecha_hasta', hasta);
-      const response = await request(`/v1/${resourceFor(tipo)}?${params}`);
-      const data = await response.json();
-      return data.data ?? data;
+    async me() {
+      const response = await request('/v1/auth/me');
+      return response.json();
+    },
+
+    // Comprobantes emitidos (facturas + boletas) del periodo indicado.
+    async listVentas({ desde, hasta } = {}) {
+      const [facturas, boletas] = await Promise.all([
+        listar('01', { desde, hasta }),
+        listar('03', { desde, hasta }),
+      ]);
+      return [...facturas, ...boletas];
+    },
+
+    listDocumentos({ tipo = '01', desde, hasta } = {}) {
+      return listar(tipo, { desde, hasta });
     },
 
     // Descarga un artefacto del comprobante y dispara la bajada en el navegador.
     async download(tipoDocumento, id, format) {
-      const resource = resourceFor(tipoDocumento);
-      const response = await request(`/v1/${resource}/${id}/download-${format}`);
+      const response = await request(`/v1/${recurso({ tipo_documento: tipoDocumento })}/${id}/download-${format}`);
       const blob = await response.blob();
       const disposition = response.headers.get('Content-Disposition') || '';
       const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
