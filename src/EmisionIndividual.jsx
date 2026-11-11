@@ -3,6 +3,9 @@ import {
   FileText, Receipt, Plus, Trash2, Send, Loader2, AlertCircle, CheckCircle2, Building2, Search,
 } from 'lucide-react';
 import { api } from './lib/api.js';
+import { CATALOGO07, CODIGOS_GRAVADOS, porcentajeIgvDe } from './lib/catalogo07.js';
+import { DETRACCIONES, porcentajeDetraccion, montoDetraccion } from './lib/detraccion.js';
+import { tasaEspecialTotal, TASA_GENERAL, vigenteTasaEspecial } from './lib/igvEspecial.js';
 
 const input = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
 const label = 'block text-xs text-slate-400 mb-1';
@@ -10,12 +13,6 @@ const label = 'block text-xs text-slate-400 mb-1';
 const hoy = () => new Date().toISOString().slice(0, 10);
 
 const UNIDADES = ['NIU', 'KGM', 'ZZ', 'LTR', 'MTR', 'BLL', 'CJ', 'SET'];
-const AFECTACIONES = [
-  { code: '10', name: 'Gravado' },
-  { code: '20', name: 'Exonerado' },
-  { code: '30', name: 'Inafecto' },
-  { code: '40', name: 'Exportación' },
-];
 
 const TIPOS = [
   { id: 'factura', label: 'Factura', icon: FileText },
@@ -51,6 +48,40 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
   const esAmazonia = Boolean(empresa?.contribuyente_amazonia);
 
   const [form, setForm] = useState(formInicial('factura'));
+  const [detraccion, setDetraccion] = useState(detraccionInicial());
+  const [regimenEspecial, setRegimenEspecial] = useState(false);
+
+  function detraccionInicial() {
+    return { activa: false, codigo: '020', cuenta_banco: '', medio_pago: '001' };
+  }
+
+  const anioEmision = Number((form.fecha_emision || '').slice(0, 4)) || new Date().getFullYear();
+  const especialVigente = vigenteTasaEspecial(anioEmision);
+  const aplicaEspecial = regimenEspecial && especialVigente && !esAmazonia;
+
+  // Tasa total (IGV + IPM) del comprobante: especial de la Ley 31556 para MYPE
+  // de restaurantes/hoteles, o general, según el año de emisión.
+  function tasaTotal() {
+    return aplicaEspecial ? tasaEspecialTotal(anioEmision) : TASA_GENERAL;
+  }
+
+  // Porcentaje de IGV (tasa total, IGV + IPM) que viaja en cada línea según el
+  // tipo de afectación y el régimen aplicable.
+  function porcentajeIgvLinea(tipAfeIgv) {
+    if (aplicaEspecial && CODIGOS_GRAVADOS.includes(tipAfeIgv)) return tasaEspecialTotal(anioEmision);
+    return porcentajeIgvDe(tipAfeIgv);
+  }
+
+  // Importe total de la operación (valor de venta + IGV) sobre el que se
+  // calcula la detracción del SPOT (DL 940).
+  function importeTotalOperacion() {
+    return form.detalles.reduce((suma, d) => {
+      const base = (Number(d.cantidad) || 0) * (Number(d.mto_valor_unitario) || 0);
+      const tasa = CODIGOS_GRAVADOS.includes(d.tip_afe_igv) ? tasaTotal() : porcentajeIgvDe(d.tip_afe_igv);
+      return suma + base * (1 + tasa / 100);
+    }, 0);
+  }
+
 
   function formInicial(tipoId) {
     return {
@@ -177,10 +208,23 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
         cantidad: Number(d.cantidad),
         mto_valor_unitario: Number(d.mto_valor_unitario),
         tip_afe_igv: d.tip_afe_igv,
-        // La boleta exige el porcentaje de IGV; gravado = 18, resto = 0.
-        porcentaje_igv: d.tip_afe_igv === '10' ? 18 : 0,
+        // La boleta exige el porcentaje de IGV: 18% gravado, 4% IVAP, 0% el
+        // resto. Bajo el régimen especial de la Ley 31556 el gravado usa la
+        // tasa especial del ejercicio (10 % en 2025, 10,5 % en 2026).
+        porcentaje_igv: porcentajeIgvLinea(d.tip_afe_igv),
       })),
     };
+
+    if (detraccion.activa) {
+      const porcentaje = porcentajeDetraccion(detraccion.codigo);
+      base.detraccion = {
+        codigo_bien_servicio: detraccion.codigo,
+        codigo_medio_pago: detraccion.medio_pago,
+        cuenta_banco: detraccion.cuenta_banco || undefined,
+        porcentaje,
+        monto: montoDetraccion(importeTotalOperacion(), porcentaje),
+      };
+    }
 
     if (tipo === 'factura') {
       return {
@@ -214,6 +258,8 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
       }
       setMensaje(texto);
       setForm(formInicial(tipo));
+      setDetraccion(detraccionInicial());
+      setRegimenEspecial(false);
       onEmitido?.();
     } catch (e) {
       setError(e.message);
@@ -286,6 +332,37 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
               <strong> exoneradas del IGV</strong> (afectación 20). El comprobante
               incluirá la leyenda de Amazonía.
             </span>
+          </div>
+        )}
+
+        {!esAmazonia && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={aplicaEspecial}
+                disabled={!especialVigente}
+                onChange={(e) => setRegimenEspecial(e.target.checked)}
+              />
+              Régimen especial del IGV para MYPE de restaurantes y hoteles (Ley 31556)
+            </label>
+            {!especialVigente ? (
+              <p className="text-xs text-amber-400">
+                La tasa especial solo rige del 01/01/2025 al 31/12/2027. En {anioEmision} se
+                aplica la tasa general ({TASA_GENERAL} %).
+              </p>
+            ) : aplicaEspecial ? (
+              <p className="text-xs text-emerald-300">
+                Se aplicará la tasa especial del {tasaEspecialTotal(anioEmision)} % (IGV
+                especial + IPM del ejercicio) a los ítems gravados. Requisitos: MYPE con ventas
+                anuales ≤ 1700 UIT y al menos 70 % de sus ingresos por
+                restaurante/hotel/alojamiento.
+              </p>
+            ) : (
+              <p className="text-xs text-slate-400">
+                Tasa general vigente: {TASA_GENERAL} %.
+              </p>
+            )}
           </div>
         )}
 
@@ -393,7 +470,7 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
               <div className="md:col-span-1">
                 <label className={label}>Afect.</label>
                 <select className={input} value={d.tip_afe_igv} onChange={(e) => setItem(i, 'tip_afe_igv', e.target.value)}>
-                  {AFECTACIONES.map((a) => <option key={a.code} value={a.code}>{a.code}</option>)}
+                  {CATALOGO07.map((a) => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
                 </select>
               </div>
               <div className="md:col-span-1 flex justify-end">
@@ -403,6 +480,68 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="border-t border-slate-700 pt-4 space-y-3">
+          <label className="flex items-center gap-2 text-sm text-slate-300">
+            <input
+              type="checkbox"
+              checked={detraccion.activa}
+              onChange={(e) => setDetraccion((d) => ({ ...d, activa: e.target.checked }))}
+            />
+            Operación sujeta a detracción (SPOT)
+          </label>
+
+          {detraccion.activa && (
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="md:col-span-2">
+                <label className={label}>Bien / servicio</label>
+                <select
+                  className={input}
+                  value={detraccion.codigo}
+                  onChange={(e) => setDetraccion((d) => ({ ...d, codigo: e.target.value }))}
+                >
+                  {DETRACCIONES.map((d) => (
+                    <option key={d.code} value={d.code}>{d.code} · {d.name} ({d.porcentaje}%)</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={label}>% detracción</label>
+                <input className={`${input} opacity-60`} value={`${porcentajeDetraccion(detraccion.codigo)}%`} disabled />
+              </div>
+              <div>
+                <label className={label}>Medio de pago</label>
+                <select
+                  className={input}
+                  value={detraccion.medio_pago}
+                  onChange={(e) => setDetraccion((d) => ({ ...d, medio_pago: e.target.value }))}
+                >
+                  <option value="001">001 · Depósito en cuenta</option>
+                  <option value="002">002 · Transferencia de fondos</option>
+                  <option value="003">003 · Orden de pago</option>
+                  <option value="004">004 · Tarjeta de débito</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className={label}>Cuenta en el Banco de la Nación</label>
+                <input
+                  className={input}
+                  value={detraccion.cuenta_banco}
+                  onChange={(e) => setDetraccion((d) => ({ ...d, cuenta_banco: e.target.value }))}
+                  placeholder="N.º de cuenta"
+                />
+              </div>
+              <div>
+                <label className={label}>Monto a detraer</label>
+                <input
+                  className={`${input} opacity-60`}
+                  value={`S/ ${montoDetraccion(importeTotalOperacion(), porcentajeDetraccion(detraccion.codigo)).toFixed(2)}`}
+                  disabled
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <label className="flex items-center gap-2 text-sm text-slate-300">
