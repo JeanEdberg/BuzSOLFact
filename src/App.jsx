@@ -7,11 +7,17 @@ import { createApi, downloadText } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
 import { mapVenta } from './lib/mapper.js';
+import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
   empresa, notificaciones, comprobantesVenta, comprobantesCompra,
 } from './lib/sampleData.js';
 
 const api = createApi();
+
+// El tipo de cambio se resuelve por fecha contra el backend (proxy de SUNAT).
+const tipoCambio = crearServicioTipoCambio({
+  fetchCotizacion: (fecha) => api.getTipoCambio(fecha),
+});
 
 const TABS = [
   { id: 'buzon', label: 'Buzón SUNAT / SUNAFIL', icon: Bell },
@@ -120,6 +126,7 @@ const FORMATOS = {
 function LibrosPanel({ ventas, compras }) {
   const [periodo, setPeriodo] = useState('2026-11');
   const [mensaje, setMensaje] = useState(null);
+  const [generando, setGenerando] = useState(false);
 
   // El periodo del selector es 'YYYY-MM'; las fechas vienen como 'YYYY-MM-DD'.
   const filtrar = (rows) => rows.filter((r) => (r.fecha_emision ?? '').startsWith(periodo));
@@ -129,17 +136,30 @@ function LibrosPanel({ ventas, compras }) {
   const resumenVentas = useMemo(() => summarize(ventasPeriodo, 'ventas'), [ventasPeriodo]);
   const resumenCompras = useMemo(() => summarize(comprasPeriodo, 'compras'), [comprasPeriodo]);
 
-  // La API no persiste el tipo de cambio: avisamos si falta en moneda extranjera.
-  const faltaTc = [...ventasPeriodo, ...comprasPeriodo].filter(
-    (r) => r.moneda && r.moneda !== 'PEN' && !r.tipo_cambio,
-  ).length;
+  // La API no persiste el tipo de cambio: se resuelve por fecha al generar.
+  const faltaTc = tipoCambio.faltantes([...ventasPeriodo, ...comprasPeriodo]).length;
 
-  function generar(tipo, formato) {
+  async function generar(tipo, formato) {
     const rows = tipo === 'ventas' ? ventasPeriodo : comprasPeriodo;
-    const ctx = { ruc: empresa.ruc, razon_social: empresa.razon_social, periodo };
-    const built = FORMATOS[formato][tipo](rows, ctx);
-    downloadText(built.filename, built.content);
-    setMensaje(`Generado ${built.filename} · formato ${FORMATOS[formato].etiqueta} (${rows.length} registros).`);
+    setGenerando(true);
+    setMensaje(null);
+    try {
+      // Consulta las tasas faltantes (una vez por fecha) antes de armar el libro.
+      await tipoCambio.precargar(tipoCambio.faltantes(rows));
+      const resueltas = rows.map((r) => {
+        if (!r.moneda || r.moneda === 'PEN' || r.tipo_cambio) return r;
+        const tasa = tipoCambio.cache.get(normalizarFecha(r.fecha_emision));
+        return tasa != null ? { ...r, tipo_cambio: tasa } : r;
+      });
+      const ctx = { ruc: empresa.ruc, razon_social: empresa.razon_social, periodo };
+      const built = FORMATOS[formato][tipo](resueltas, ctx);
+      downloadText(built.filename, built.content);
+      setMensaje(`Generado ${built.filename} · formato ${FORMATOS[formato].etiqueta} (${rows.length} registros).`);
+    } catch (error) {
+      setMensaje(`No se pudo generar el libro: ${error.message}`);
+    } finally {
+      setGenerando(false);
+    }
   }
 
   const cards = [
@@ -167,8 +187,8 @@ function LibrosPanel({ ventas, compras }) {
 
       {faltaTc > 0 && (
         <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
-          <AlertCircle size={16} /> {faltaTc} comprobante(s) en moneda extranjera sin tipo de cambio.
-          La API no lo persiste; el registro puede ser rechazado por SUNAT.
+          <AlertCircle size={16} /> {faltaTc} fecha(s) con moneda extranjera sin tipo de cambio.
+          Se consultarán a SUNAT al generar (requiere el proxy <code>/v1/tipo-cambio</code> en el backend).
         </div>
       )}
 
@@ -203,11 +223,11 @@ function LibrosPanel({ ventas, compras }) {
                 <button
                   key={key}
                   onClick={() => generar(c.tipo, key)}
-                  disabled={!c.resumen.registros}
+                  disabled={!c.resumen.registros || generando}
                   title={f.detalle}
                   className="flex items-center justify-center gap-2 bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Download size={15} /> {f.etiqueta}
+                  {generando ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} {f.etiqueta}
                 </button>
               ))}
             </div>

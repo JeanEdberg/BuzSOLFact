@@ -8,6 +8,7 @@
 //   GET  /api/v1/auth/me
 
 import { normalizarLista, recurso } from './mapper.js';
+import { parseTipoCambio } from './tipoCambio.js';
 
 const BASE_URL = import.meta.env?.VITE_API_URL || '/api';
 
@@ -64,6 +65,16 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     async me() {
       const response = await request('/v1/auth/me');
       return response.json();
+    },
+
+    // La PWA no puede leer tipoCambio.txt de SUNAT directamente (CORS). El backend
+    // actúa de proxy con caché por fecha y responde { fecha, compra, venta }; si
+    // devuelve el TXT crudo también se acepta.
+    async getTipoCambio(fecha) {
+      const response = await request(`/v1/tipo-cambio?fecha=${encodeURIComponent(fecha)}`);
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('application/json')) return response.json();
+      return parseTipoCambio(await response.text());
     },
 
     // Comprobantes emitidos (facturas + boletas) del periodo indicado.

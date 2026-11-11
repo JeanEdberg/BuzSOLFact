@@ -56,11 +56,38 @@ Notas del contrato real de la API:
 - `GET /v1/invoices` devuelve un **paginador** (`data.data[]`); `GET /v1/boletas`
   devuelve un **array plano** (`data[]`). El cliente normaliza ambos.
 - **La API no persiste el tipo de cambio** (solo existe dentro del JSON del
-  detalle al emitir). Si hay comprobantes en moneda extranjera sin tipo de
-  cambio, el panel de libros lo advierte; SUNAT puede rechazar el registro.
+  detalle al emitir). La PWA lo resuelve por fecha al generar el libro (ver
+  abajo).
 - La API solo emite comprobantes propios: no expone comprobantes recibidos, así
   que el Registro de Compras se alimenta de la fuente local hasta que exista un
   módulo de compras.
+
+## Tipo de cambio (proxy requerido en el backend)
+
+La API no guarda el tipo de cambio, así que se resuelve por fecha al generar el
+libro. SUNAT publica la tasa del día en un archivo de texto:
+
+```
+https://www.sunat.gob.pe/a/txt/tipoCambio.txt   ->  10/11/2026|3.409|3.418|
+```
+
+Ese archivo **no se puede leer desde el navegador**: responde
+`Access-Control-Allow-Origin: https://ww3.sunat.gob.pe`, así que CORS lo bloquea.
+Además solo trae la tasa del día, sin histórico. Por eso el backend debe exponer
+un proxy con caché por fecha:
+
+```
+GET {VITE_API_URL}/v1/tipo-cambio?fecha=2026-11-10
+  -> { "fecha": "2026-11-10", "compra": 3.409, "venta": 3.418 }
+```
+
+El cliente acepta JSON o el TXT crudo de SUNAT. Se usa la **tasa de venta** para
+convertir la operación a soles. `src/lib/tipoCambio.js` cachea por fecha (una
+sola consulta aunque haya muchos comprobantes del mismo día) y deduplica las
+peticiones simultáneas.
+
+**Pendiente en el backend (Laravel):** implementar esa ruta. Debe consultar el
+TXT de SUNAT, parsearlo y guardar la tasa por fecha para servir el histórico.
 
 ## Libros Electrónicos (PLE y SIRE)
 
@@ -97,6 +124,7 @@ src/
   lib/
     api.js         cliente de la API de facturación
     mapper.js      comprobante de la API -> fila de libro
+    tipoCambio.js  tipo de cambio SUNAT por fecha (proxy del backend)
     ple.js         generadores PLE 14.1 / 8.1
     sire.js        generadores SIRE RVIE / RCE
     *.test.js      pruebas de los generadores y del mapeador

@@ -30,6 +30,10 @@ npm test         # vitest (src/lib/*.test.js)
 - **El service worker solo se registra en producción.** En desarrollo el
   cache-first de Vite sirve módulos antiguos y oculta los cambios; `main.jsx`
   desregistra cualquier SW previo en dev.
+- El tipo de cambio se resuelve por fecha (`src/lib/tipoCambio.js`) porque la API
+  no lo persiste. La PWA no puede leer el TXT de SUNAT (CORS restringido a
+  `ww3.sunat.gob.pe`), así que requiere el proxy `GET /v1/tipo-cambio?fecha=`.
+  Se usa la tasa de venta. La caché se indexa por fecha y deduplica peticiones.
 - El generador PLE (`src/lib/ple.js`) sigue el Anexo N.º 2 de la **RS
   112-2021/SUNAT**: campos separados por `|`, línea terminada en `|`, fechas
   `DD/MM/AAAA`, montos a 2 decimales, NC/ND con signo negativo.
