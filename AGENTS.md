@@ -64,7 +64,17 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
 
 - `companies`: `GET /companies` (lista ligera con `usuario_sol`, `modo_produccion`,
   `contribuyente_amazonia`, `tipo_amazonia`), `GET /companies/{id}` (`data.company`),
-  `PUT /companies/{id}` (objeto completo; con archivo se usa `POST` + `_method=PUT`).
+  `PUT /companies/{id}` (**actualización parcial**: solo se validan los campos
+  enviados; con archivo se usa `POST` + `_method=PUT`). El formulario de Accesos SOL
+  manda únicamente `usuario_sol`/`clave_sol`, así que no exigir el resto de datos.
+- `credit-notes` / `debit-notes`: `GET /catalogs/motivos`, `GET /` (paginador),
+  `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`.
+- `dispatch-guides`: `GET /catalogs/transfer-reasons`, `GET /catalogs/transport-modes`,
+  `GET /` (paginador), `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`. El payload
+  usa `fec_traslado` (se normaliza a `fecha_traslado`) y `destinatario_id`.
+- `companies/{id}/gre-credentials`: `GET /`, `PUT /` (`modo` + `client_id`,
+  `client_secret`, `ruc_proveedor`, `usuario_sol`, `clave_sol`), `POST /test-connection`,
+  `DELETE /clear`, `POST /copy`; además `GET /gre-credentials/defaults/{modo}`.
 - `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
   `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`.
 - `compras` (recibidos): `GET /` (paginador), `POST /` (alta manual),
@@ -89,3 +99,16 @@ Reglas del backend que conviene no romper:
   alta manual sigue funcionando.
 - Autorización por empresa: `User::canAccessCompany($id)` (el super admin accede
   a todas). Filtrar por `company_id` cuando se envía; si no, la empresa del usuario.
+
+Notas de entorno y convenciones del backend:
+
+- **Generación de PDF**: DomPDF embebe el QR como imagen, así que requiere la
+  extensión **GD** de PHP (`php8.4-gd`). Sin ella, `generate-pdf` devuelve 500
+  (`The PHP GD extension is required`).
+- **Trait de configuración**: `Company` usa `HasCompanyConfigurations` (tabla
+  `company_configurations`), no `ConfigurableCompany`. Las credenciales GRE viven
+  en columnas `gre_*` de `companies` y se leen con `getConfig('credenciales_gre.{modo}')`
+  / `greCredentialsForMode($modo)`. `setGreCredentials($modo, $credenciales)`.
+- **Tests**: los endpoints de documentos están bajo `auth:sanctum`; las pruebas
+  deben autenticar (`$this->actingAs(User::factory()->create())`). Los factories de
+  notas y guías ya existían; el de guías tenía una coma faltante tras `vehiculo`.
