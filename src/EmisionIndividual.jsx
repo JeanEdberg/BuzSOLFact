@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  FileText, Receipt, Plus, Trash2, Send, Loader2, AlertCircle, CheckCircle2, Building2,
+  FileText, Receipt, Plus, Trash2, Send, Loader2, AlertCircle, CheckCircle2, Building2, Search,
 } from 'lucide-react';
 import { api } from './lib/api.js';
 
@@ -22,7 +22,10 @@ const TIPOS = [
   { id: 'boleta', label: 'Boleta', icon: Receipt },
 ];
 
-const itemVacio = () => ({ codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1, mto_valor_unitario: 0, tip_afe_igv: '10' });
+const itemVacio = (exonerado = false) => ({
+  codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1, mto_valor_unitario: 0,
+  tip_afe_igv: exonerado ? '20' : '10',
+});
 
 /**
  * Emisión individual de facturas y boletas.
@@ -40,8 +43,12 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
   const [tipo, setTipo] = useState('factura');
   const [enviarSunat, setEnviarSunat] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
+
+  const empresa = empresas.find((e) => e.id === empresaId);
+  const esAmazonia = Boolean(empresa?.contribuyente_amazonia);
 
   const [form, setForm] = useState(formInicial('factura'));
 
@@ -67,7 +74,7 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
         const lista = await api.listCompanies();
         setEmpresas(lista);
         const id = empresaId ?? lista[0]?.id ?? null;
-        if (id) await cambiarEmpresa(id);
+        if (id) await cambiarEmpresa(id, lista);
       } catch (e) {
         setError(e.message);
       }
@@ -80,13 +87,18 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
-  async function cambiarEmpresa(id) {
+  async function cambiarEmpresa(id, lista = empresas) {
     setEmpresaId(id);
     setMensaje(null);
     try {
       const suc = await api.listBranches(id);
       setSucursales(suc);
       setBranchId(suc[0]?.id ?? null);
+      // Contribuyente de la Amazonía: sus ventas van exoneradas del IGV.
+      const esAmazonia = Boolean(lista.find((e) => e.id === id)?.contribuyente_amazonia);
+      if (esAmazonia) {
+        setForm((f) => ({ ...f, detalles: f.detalles.map((d) => ({ ...d, tip_afe_igv: '20' })) }));
+      }
     } catch (e) {
       setError(e.message);
     }
@@ -108,7 +120,41 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
     });
   }
 
-  const agregarItem = () => setForm((f) => ({ ...f, detalles: [...f.detalles, itemVacio()] }));
+  // Al cambiar el tipo de documento se reconsulta si ya había un número.
+  function cambiarTipoDocCliente(tipoDoc) {
+    setForm((f) => ({ ...f, clienteTipoDoc: tipoDoc, clienteNumDoc: '', clienteRazonSocial: '', clienteDireccion: '' }));
+  }
+
+  // Toma los datos del padrón (RUC/DNI) para autocompletar al cliente.
+  async function consultarCliente() {
+    const numero = (form.clienteNumDoc ?? '').trim();
+    if (!numero) {
+      setError('Ingresa el RUC o DNI del cliente para consultarlo.');
+      return;
+    }
+    setBuscando(true);
+    setError(null);
+    setMensaje(null);
+    try {
+      const res = await api.consultarDocumento({ tipoDocumento: form.clienteTipoDoc, numeroDocumento: numero });
+      if (res?.encontrado && res.data) {
+        setForm((f) => ({
+          ...f,
+          clienteRazonSocial: res.data.razon_social ?? f.clienteRazonSocial,
+          clienteDireccion: res.data.direccion ?? f.clienteDireccion,
+        }));
+        setMensaje(`Datos de ${res.data.razon_social ?? numero} cargados desde el padrón.`);
+      } else {
+        setMensaje(res?.mensaje ?? 'No se pudo autocompletar; escribe los datos a mano.');
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  const agregarItem = () => setForm((f) => ({ ...f, detalles: [...f.detalles, itemVacio(esAmazonia)] }));
   const quitarItem = (indice) => setForm((f) => ({ ...f, detalles: f.detalles.filter((_, i) => i !== indice) }));
 
   function construirPayload() {
@@ -232,6 +278,17 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
           <Building2 size={18} className="text-blue-400" /> {tipo === 'factura' ? 'Factura' : 'Boleta'}
         </h4>
 
+        {esAmazonia && (
+          <div className="flex items-start gap-2 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+            <span>
+              Empresa de la Amazonía: las ventas de bienes o servicios se emiten
+              <strong> exoneradas del IGV</strong> (afectación 20). El comprobante
+              incluirá la leyenda de Amazonía.
+            </span>
+          </div>
+        )}
+
         <div className="grid gap-3 md:grid-cols-2">
           <div>
             <label className={label}>Serie</label>
@@ -270,7 +327,7 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
           )}
           <div>
             <label className={label}>Doc. cliente</label>
-            <select className={input} value={form.clienteTipoDoc} onChange={(e) => setCampo('clienteTipoDoc', e.target.value)}>
+            <select className={input} value={form.clienteTipoDoc} onChange={(e) => cambiarTipoDocCliente(e.target.value)}>
               <option value="6">RUC</option>
               <option value="1">DNI</option>
               <option value="4">Carné de extranjería</option>
@@ -278,7 +335,19 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
           </div>
           <div>
             <label className={label}>N° documento cliente</label>
-            <input className={input} value={form.clienteNumDoc} onChange={(e) => setCampo('clienteNumDoc', e.target.value)} required />
+            <div className="flex gap-2">
+              <input className={input} value={form.clienteNumDoc} onChange={(e) => setCampo('clienteNumDoc', e.target.value)} required />
+              <button
+                type="button"
+                onClick={consultarCliente}
+                disabled={buscando || (form.clienteTipoDoc !== '6' && form.clienteTipoDoc !== '1')}
+                title="Consultar datos del cliente en el padrón"
+                className="flex items-center gap-1 shrink-0 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 px-3 py-2 rounded-lg text-xs"
+              >
+                {buscando ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                Autocompletar
+              </button>
+            </div>
           </div>
           <div>
             <label className={label}>Razón social cliente</label>

@@ -122,6 +122,19 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
 - `dispatch-guides`: `GET /catalogs/transfer-reasons`, `GET /catalogs/transport-modes`,
   `GET /` (paginador), `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`. El payload
   usa `fec_traslado` (se normaliza a `fecha_traslado`) y `destinatario_id`.
+  Acepta `documentos_relacionados` (array `{tipo, tipo_desc, numero[, emisor]}`,
+  catálogo 61: la factura que sustenta el traslado) y `datos_adicionales`; ambos se
+  persisten y `documentos_relacionados` se emite en el XML como
+  `cac:AdditionalDocumentReference` (`GreenterService::createDespatch` →
+  `Despatch::setAddDocs`).
+- `invoices`: `GET /` acepta el filtro `cliente_numero_documento` (RUC/DNI del
+  cliente) para listar las facturas de un cliente y vincularlas a una guía.
+- `consulta-documento`: `GET /consulta-documento?tipo_documento=6|1&numero_documento=…`
+  consulta el padrón RUC/DNI para autocompletar el cliente. Devuelve
+  `{success, disponible, encontrado, mensaje, data}`; sin proveedor configurado
+  (`SUNAT_CONSULTA_RUC_ENDPOINT` / `SUNAT_CONSULTA_DNI_ENDPOINT`, opcionalmente
+  con `SUNAT_CONSULTA_USUARIO`/`SUNAT_CONSULTA_CLAVE`) responde `disponible:false`
+  y la PWA cae al ingreso manual.
 - `companies/{id}/gre-credentials`: `GET /`, `PUT /` (`modo` + `client_id`,
   `client_secret`, `ruc_proveedor`, `usuario_sol`, `clave_sol`), `POST /test-connection`,
   `DELETE /clear`, `POST /copy`; además `GET /gre-credentials/defaults/{modo}`.

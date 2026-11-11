@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   FileMinus, FilePlus, Truck, Plus, Trash2, Send, Download, Loader2,
-  AlertCircle, CheckCircle2, Building2,
+  AlertCircle, CheckCircle2, Building2, Link2,
 } from 'lucide-react';
 import { api } from './lib/api.js';
 
@@ -24,7 +24,7 @@ const SUBTIPOS = [
   { id: 'guia', label: 'Guías de remisión', icon: Truck, recurso: 'dispatch-guides' },
 ];
 
-const itemVacio = () => ({ codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1, mto_valor_unitario: 0, tip_afe_igv: '10' });
+const itemVacio = () => ({ codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1, mto_valor_unitario: 0, tip_afe_igv: '10', peso_total: '' });
 
 const esGuia = (sub) => sub === 'guia';
 
@@ -46,6 +46,7 @@ export default function NotasGuiasPanel({ conectado }) {
   const [motivos, setMotivos] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [documentos, setDocumentos] = useState([]);
+  const [facturasCliente, setFacturasCliente] = useState([]);
 
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
@@ -86,6 +87,8 @@ export default function NotasGuiasPanel({ conectado }) {
         conductor_num_doc: '', conductor_licencia: '', vehiculo_placa: '',
         transportista_tipo_doc: '6', transportista_num_doc: '', transportista_razon_social: '', transportista_nro_mtc: '',
         observaciones: '',
+        factura_vinculada: '',
+        documentos_relacionados: [],
         detalles: [itemVacio()],
       };
     }
@@ -170,6 +173,56 @@ export default function NotasGuiasPanel({ conectado }) {
   const agregarItem = () => setForm((f) => ({ ...f, detalles: [...f.detalles, itemVacio()] }));
   const quitarItem = (indice) => setForm((f) => ({ ...f, detalles: f.detalles.filter((_, i) => i !== indice) }));
 
+  // Guías por traslado de compra: se busca la factura del cliente por su RUC y
+  // se transcriben sus ítems a la guía.
+  async function buscarFacturasCliente(numeroDocumento) {
+    if (!numeroDocumento) {
+      setFacturasCliente([]);
+      return;
+    }
+    try {
+      const facturas = await api.listFacturasCliente({ companyId: empresaId, numeroDocumento });
+      setFacturasCliente(facturas);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function vincularFactura(numeroCompleto) {
+    if (!numeroCompleto) {
+      setForm((f) => ({ ...f, factura_vinculada: '', documentos_relacionados: [] }));
+      return;
+    }
+    const factura = facturasCliente.find((x) => x.numero_completo === numeroCompleto);
+    setForm((f) => {
+      const detalles = factura?.detalles?.length
+        ? factura.detalles.map((d) => ({
+            codigo: d.codigo ?? '',
+            descripcion: d.descripcion ?? '',
+            unidad: d.unidad ?? 'NIU',
+            cantidad: d.cantidad ?? 1,
+            peso_total: d.peso_total ?? '',
+          }))
+        : f.detalles;
+      return {
+        ...f,
+        factura_vinculada: numeroCompleto,
+        documentos_relacionados: factura
+          ? [{ tipo: '01', tipo_desc: 'FACTURA', numero: factura.numero_completo }]
+          : [],
+        observaciones: f.observaciones || `Traslado por compra según factura ${numeroCompleto}`,
+        detalles,
+      };
+    });
+  }
+
+  function cambiarDestinatario(valor) {
+    setForm((f) => ({ ...f, destinatario_id: valor, factura_vinculada: '', documentos_relacionados: [] }));
+    setFacturasCliente([]);
+    const cliente = clientes.find((c) => String(c.id) === String(valor));
+    if (cliente?.numero_documento) buscarFacturasCliente(cliente.numero_documento);
+  }
+
   function construirPayload() {
     if (esGuia(sub)) {
       return {
@@ -198,8 +251,10 @@ export default function NotasGuiasPanel({ conectado }) {
         transportista_razon_social: form.transportista_razon_social,
         transportista_nro_mtc: form.transportista_nro_mtc,
         observaciones: form.observaciones,
+        documentos_relacionados: form.documentos_relacionados ?? [],
         detalles: form.detalles.map((d) => ({
           codigo: d.codigo, descripcion: d.descripcion, unidad: d.unidad, cantidad: Number(d.cantidad),
+          peso_total: d.peso_total === '' || d.peso_total == null ? undefined : Number(d.peso_total),
         })),
       };
     }
@@ -338,7 +393,18 @@ export default function NotasGuiasPanel({ conectado }) {
           <Building2 size={18} className="text-blue-400" /> Nuevo documento
         </h4>
 
-        {esGuia(sub) ? <CamposGuia form={form} setCampo={setCampo} motivos={motivos} modalidades={modalidades} clientes={clientes} />
+        {esGuia(sub) ? (
+          <CamposGuia
+            form={form}
+            setCampo={setCampo}
+            motivos={motivos}
+            modalidades={modalidades}
+            clientes={clientes}
+            facturas={facturasCliente}
+            onDestinatario={cambiarDestinatario}
+            onVincularFactura={vincularFactura}
+          />
+        )
           : <CamposNota form={form} setCampo={setCampo} motivos={motivos} sub={sub} />}
 
         <DetallesTabla form={form} setItem={setItem} agregarItem={agregarItem} quitarItem={quitarItem} guia={esGuia(sub)} />
@@ -456,12 +522,13 @@ function CamposNota({ form, setCampo, motivos, sub }) {
   );
 }
 
-function CamposGuia({ form, setCampo, motivos, modalidades, clientes }) {
+function CamposGuia({ form, setCampo, motivos, modalidades, clientes, facturas, onDestinatario, onVincularFactura }) {
+  const trasladoPorCompra = form.cod_traslado === '02';
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div>
         <label className={label}>Destinatario</label>
-        <select className={input} value={form.destinatario_id} onChange={(e) => setCampo('destinatario_id', e.target.value)} required>
+        <select className={input} value={form.destinatario_id} onChange={(e) => onDestinatario(e.target.value)} required>
           <option value="">Selecciona…</option>
           {clientes.map((c) => <option key={c.id} value={c.id}>{c.razon_social} · {c.numero_documento}</option>)}
         </select>
@@ -490,6 +557,30 @@ function CamposGuia({ form, setCampo, motivos, modalidades, clientes }) {
           {modalidades.map((m) => <option key={m.code} value={m.code}>{m.name}</option>)}
         </select>
       </div>
+      {trasladoPorCompra && (
+        <div className="md:col-span-2 bg-slate-900/30 border border-slate-700 rounded-lg p-3">
+          <label className={`${label} flex items-center gap-1`}>
+            <Link2 size={13} /> Factura vinculada (traslado por compra)
+          </label>
+          <select
+            className={input}
+            value={form.factura_vinculada ?? ''}
+            onChange={(e) => onVincularFactura(e.target.value)}
+          >
+            <option value="">Sin factura vinculada</option>
+            {facturas.map((f) => (
+              <option key={f.id} value={f.numero_completo}>
+                {f.numero_completo} · {String(f.fecha_emision).slice(0, 10)}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-500 mt-1">
+            Elige el destinatario para ver sus facturas. Al vincular una factura se
+            transcriben sus ítems (producto, cantidad, peso) y queda registrada en
+            los documentos relacionados de la guía.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2">
         <div>
           <label className={label}>Peso</label>
@@ -565,6 +656,15 @@ function CamposGuia({ form, setCampo, motivos, modalidades, clientes }) {
           </div>
         </>
       )}
+      <div className="md:col-span-2">
+        <label className={label}>Observaciones</label>
+        <input
+          className={input}
+          placeholder="Bienes transferidos en la Amazonía / traslado por compra…"
+          value={form.observaciones}
+          onChange={(e) => setCampo('observaciones', e.target.value)}
+        />
+      </div>
     </div>
   );
 }
@@ -612,6 +712,12 @@ function DetallesTabla({ form, setItem, agregarItem, quitarItem, guia }) {
                   </select>
                 </div>
               </>
+            )}
+            {guia && (
+              <div className="md:col-span-2">
+                <label className={label}>Peso (kg)</label>
+                <input type="number" step="0.001" className={input} value={d.peso_total} onChange={(e) => setItem(i, 'peso_total', e.target.value)} />
+              </div>
             )}
             <div className="md:col-span-1 flex justify-end">
               <button type="button" onClick={() => quitarItem(i)} disabled={form.detalles.length === 1} className="text-red-400 hover:text-red-300 disabled:opacity-30 p-2">

@@ -453,6 +453,27 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return normalizarLista(json);
     },
 
+    // Consulta el padrón por RUC (tipo '6') o DNI (tipo '1') para autocompletar
+    // los datos del cliente al emitir. Devuelve
+    // { disponible, encontrado, mensaje, data }.
+    async consultarDocumento({ tipoDocumento, numeroDocumento }) {
+      const params = new URLSearchParams({
+        tipo_documento: String(tipoDocumento),
+        numero_documento: String(numeroDocumento),
+      });
+      const response = await request(`/v1/consulta-documento?${params}`);
+      return response.json();
+    },
+
+    // Facturas emitidas a un cliente (por RUC/DNI). Se usa para vincular una
+    // guía de traslado por compra con la factura que la sustenta.
+    async listFacturasCliente({ companyId, numeroDocumento } = {}) {
+      const params = new URLSearchParams({ per_page: '100' });
+      if (companyId) params.set('company_id', String(companyId));
+      if (numeroDocumento) params.set('cliente_numero_documento', String(numeroDocumento));
+      return listarTodasLasPaginas('/v1/invoices', params);
+    },
+
     // Tipos de documento SUNAT que admiten serie.
     async tiposDocumentoSerie() {
       const response = await request('/v1/correlatives/document-types');
