@@ -58,7 +58,8 @@ volver a generarlos.
   (los tests fijan la posición y el conteo de campos).
 - **Pestañas de operación**: `CargaMasiva.jsx` (emisión masiva desde plantilla),
   `EmisionIndividual.jsx` (factura/boleta individual), `ImportacionHistorica.jsx`
-  (histórico PLE/plantilla) y `NotasGuiasPanel.jsx` (notas 07/08 y guías 09)
+  (histórico PLE/plantilla), `NotasGuiasPanel.jsx` (notas 07/08 y guías 09) y
+  `RetencionesBajas.jsx` (retenciones 20 y comunicación de baja RA)
   siguen el mismo patrón: reciben `api` y `conectado`, cargan empresa/sucursal y
   muestran aviso ámbar cuando no hay API. El `NotasGuiasPanel` reutiliza los
   catálogos del backend para los motivos y la modalidad de traslado, y usa
@@ -76,6 +77,21 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   manda únicamente `usuario_sol`/`clave_sol`, así que no exigir el resto de datos.
 - `credit-notes` / `debit-notes`: `GET /catalogs/motivos`, `GET /` (paginador),
   `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`.
+- `daily-summaries` (resumen diario de boletas, tipo RC): `GET /` (paginador),
+  `GET /pending?company_id=&branch_id=&fecha_emision=` (boletas PENDIENTES de la
+  fecha), `POST /` (agrupa las pendientes y asigna correlativo), `POST /{id}/send-sunat`,
+  `POST /{id}/check-status`, `GET /{id}/download-{xml,cdr}`. El modelo `DailySummary`
+  expone `fecha_emision` y `numero_completo` (accessors) para `FileService`.
+- `retentions` (comprobante de retención, tipo 20): `GET /` (paginador),
+  `POST /` (el correlativo lo asigna el backend por sucursal, tipo `20`),
+  `GET /{id}`, `POST /{id}/send-sunat`, `GET /{id}/download-{xml,cdr}`.
+  `imp_retenido`/`imp_pagado` son la suma de los detalles.
+- `voided-documents` (comunicación de baja, resumen RA): `GET /` (paginador),
+  `GET /candidates?company_id=&branch_id=&fecha_referencia=&tipo_documento=`
+  (documentos ACEPTADOS anulables), `POST /` (valida máx. 7 días y duplicados),
+  `GET /{id}`, `POST /{id}/send-sunat`, `POST /{id}/check-status`,
+  `GET /{id}/download-{xml,cdr}`. El correlativo del RA es por fecha de
+  comunicación; `numero_completo` = `RA-AAAAMMDD-correlativo`.
 - `dispatch-guides`: `GET /catalogs/transfer-reasons`, `GET /catalogs/transport-modes`,
   `GET /` (paginador), `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`. El payload
   usa `fec_traslado` (se normaliza a `fecha_traslado`) y `destinatario_id`.
