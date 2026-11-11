@@ -22,7 +22,7 @@ npm test         # pruebas de los generadores PLE
 | Módulo | Descripción |
 |---|---|
 | Buzón SUNAT / SUNAFIL | Notificaciones electrónicas **por empresa**, con sincronización y alta manual. |
-| Registro de Compras | Comprobantes recibidos con descarga XML/PDF/CDR. |
+| Registro de Compras | Comprobantes recibidos **por empresa**: alta manual o importando el XML UBL del proveedor. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
 | Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, más un Excel corto (ventas y compras). |
@@ -59,9 +59,32 @@ Notas del contrato real de la API:
 - **La API no persiste el tipo de cambio** (solo existe dentro del JSON del
   detalle al emitir). La PWA lo resuelve por fecha al generar el libro (ver
   abajo).
-- La API solo emite comprobantes propios: no expone comprobantes recibidos, así
-  que el Registro de Compras se alimenta de la fuente local hasta que exista un
-  módulo de compras.
+- El Registro de Compras ya no depende de la fuente local: se alimenta del
+  endpoint `/v1/compras` (ver más abajo).
+
+## Registro de compras (comprobantes recibidos)
+
+La API de facturación emite comprobantes propios, pero no exponía los
+**recibidos**. El backend incorpora un registro de compras por empresa:
+
+```
+GET    {VITE_API_URL}/v1/compras?company_id=&fecha_desde=&fecha_hasta=&estado_sunat=
+POST   {VITE_API_URL}/v1/compras                       (alta manual)
+POST   {VITE_API_URL}/v1/compras/importar-xml          (multipart: company_id + xml)
+GET    {VITE_API_URL}/v1/compras/{id}
+DELETE {VITE_API_URL}/v1/compras/{id}
+```
+
+El listado es un paginador (`data.data[]`). Cada compra se deduplica por
+`(empresa, proveedor, tipo, serie, correlativo)`: volver a registrar o importar
+el mismo comprobante lo **actualiza** en vez de duplicarlo. El modelo expone
+`proveedor` anidado (`tipo_documento`, `numero_documento`, `razon_social`) con el
+mismo vocabulario que consume `mapCompra`.
+
+Al conectar la API, la pestaña **Registro de Compras** carga las compras de la
+empresa del usuario y ofrece el botón **Importar XML** para subir el XML UBL del
+proveedor; el backend extrae serie, RUC, razón social, moneda, tipo de cambio y
+los importes por bucket de tributo.
 
 ## Tipo de cambio (proxy requerido en el backend)
 

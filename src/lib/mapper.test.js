@@ -83,4 +83,33 @@ describe('mapper de la API', () => {
     expect(fila.proveedor.num_doc).toBe('20512345678');
     expect(fila.no_gravada).toBe('400.00');
   });
+
+  it('mapea una compra tal como la devuelve el registro de compras de la API', () => {
+    // Forma real: el modelo Compra expone 'proveedor' anidado con el mismo
+    // vocabulario que el frontend, y los importes en mto_*.
+    const compra = {
+      id: 7,
+      tipo_documento: '01',
+      serie: 'F010',
+      correlativo: '0008877',
+      fecha_emision: '2026-11-05T00:00:00.000000Z',
+      moneda: 'USD',
+      tipo_cambio: '3.750',
+      mto_oper_gravadas: '800.00',
+      mto_igv: '144.00',
+      mto_imp_venta: '944.00',
+      estado_sunat: 'ACEPTADO',
+      proveedor: { tipo_documento: '6', numero_documento: '20100123456', razon_social: 'Distribuidora Andina S.A.C.' },
+    };
+
+    const fila = mapCompra(compra);
+
+    expect(fila.numero).toBe('00008877');
+    expect(fila.fecha_emision).toBe('2026-11-05');
+    expect(fila.proveedor.razon_social).toBe('Distribuidora Andina S.A.C.');
+    expect(fila.bi_gravada).toBe('800.00');
+    expect(fila.igv).toBe('144.00');
+    expect(fila.total).toBe('944.00');
+    expect(fila.tipo_cambio).toBe('3.750');
+  });
 });

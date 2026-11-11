@@ -67,6 +67,12 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   `PUT /companies/{id}` (objeto completo; con archivo se usa `POST` + `_method=PUT`).
 - `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
   `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`.
+- `compras` (recibidos): `GET /` (paginador), `POST /` (alta manual),
+  `POST /importar-xml` (multipart `company_id` + `xml`), `GET /{id}`,
+  `DELETE /{id}`. Se deduplica por `(empresa, proveedor, tipo, serie, correlativo)`
+  y el modelo expone `proveedor` anidado (mismo vocabulario que `mapCompra`).
+  El parser UBL acumula base e impuesto por código de tributo (`TaxSubtotal`),
+  no desde `LegalMonetaryTotal`.
 - `tipo-cambio`: `GET /tipo-cambio?fecha=AAAA-MM-DD`.
 
 Reglas del backend que conviene no romper:

@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, AlertCircle, BookOpen, Plug, Loader2, KeyRound,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
 import { buildLibroCorto } from './lib/libroCorto.js';
-import { mapVenta } from './lib/mapper.js';
+import { mapVenta, mapCompra } from './lib/mapper.js';
 import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
   empresa, comprobantesVenta, comprobantesCompra,
@@ -326,6 +326,7 @@ export default function App() {
   const [compras, setCompras] = useState(comprobantesCompra);
   const [fuente, setFuente] = useState('demo');
   const [token, setToken] = useState(null);
+  const [companyId, setCompanyId] = useState(null);
   const [cargando, setCargando] = useState(false);
   const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
@@ -336,13 +337,22 @@ export default function App() {
     try {
       const sesion = await api.login({ email, password });
       setToken(sesion.access_token ?? sesion.token ?? null);
+      const idEmpresa = sesion.user?.company_id ?? null;
+      setCompanyId(idEmpresa);
+
       const emitidos = await api.listVentas();
       setVentas(emitidos.map((d) => mapVenta(d)));
-      // La API de facturación no expone comprobantes recibidos; se conserva la
-      // fuente local para compras hasta conectar un módulo de compras.
-      setCompras(comprobantesCompra);
+
+      // Compras (recibidos): la API las expone por empresa.
+      let recibidos = [];
+      if (idEmpresa) {
+        const res = await api.listCompras({ companyId: idEmpresa });
+        recibidos = res.items ?? [];
+      }
+      setCompras(recibidos.map((d) => mapCompra(d)));
+
       setFuente('api');
-      setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) cargado(s) desde la API.`);
+      setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) y ${recibidos.length} recibido(s) cargado(s) desde la API.`);
     } catch (error) {
       setErrorConexion(error.message);
     } finally {
@@ -355,8 +365,34 @@ export default function App() {
     setCompras(comprobantesCompra);
     setFuente('demo');
     setToken(null);
+    setCompanyId(null);
     api.setToken(null);
     setAviso('Se restauraron los datos de demostración.');
+  }
+
+  async function recargarCompras(id = companyId) {
+    if (!id) return;
+    const res = await api.listCompras({ companyId: id });
+    setCompras((res.items ?? []).map((d) => mapCompra(d)));
+  }
+
+  async function handleImportarCompra(file) {
+    if (!file) return;
+    if (!companyId) {
+      setAviso('Conecta la API para importar comprobantes.');
+      return;
+    }
+    setBusy('importar-compra');
+    setAviso(null);
+    try {
+      const compra = await api.importarCompraXml(companyId, file);
+      await recargarCompras();
+      setAviso(`Comprobante ${compra.numero_completo ?? ''} importado desde el XML.`);
+    } catch (error) {
+      setAviso(`No se pudo importar el XML: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function handleDownload(documento, format) {
@@ -427,7 +463,20 @@ export default function App() {
 
           {activeTab === 'compras' && (
             <div className="space-y-4">
-              <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
+                <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${companyId ? 'bg-blue-600 hover:bg-blue-500 cursor-pointer' : 'bg-slate-700 opacity-50 cursor-not-allowed'}`}>
+                  {busy === 'importar-compra' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                  Importar XML
+                  <input
+                    type="file"
+                    accept=".xml,application/xml,text/xml"
+                    className="hidden"
+                    disabled={!companyId}
+                    onChange={(e) => { handleImportarCompra(e.target.files?.[0]); e.target.value = ''; }}
+                  />
+                </label>
+              </div>
               <ComprobantesTable
                 documentos={filtrados(compras)}
                 contraparte="Proveedor"

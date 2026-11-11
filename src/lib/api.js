@@ -100,6 +100,49 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Registro de compras (comprobantes recibidos de proveedores). El listado
+    // viene en un paginador de Laravel: { data: { data: [...] } }.
+    async listCompras({ companyId, fechaDesde, fechaHasta, estadoSunat } = {}) {
+      const params = new URLSearchParams();
+      if (companyId) params.set('company_id', String(companyId));
+      if (fechaDesde) params.set('fecha_desde', fechaDesde);
+      if (fechaHasta) params.set('fecha_hasta', fechaHasta);
+      if (estadoSunat) params.set('estado_sunat', estadoSunat);
+      const qs = params.toString();
+      const response = await request(`/v1/compras${qs ? `?${qs}` : ''}`);
+      const json = await response.json();
+      const paginador = json?.data ?? {};
+      return {
+        items: paginador.data ?? [],
+        total: paginador.total ?? (paginador.data?.length ?? 0),
+      };
+    },
+
+    async crearCompra(payload) {
+      const response = await request('/v1/compras', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Sube el XML UBL del proveedor (multipart) y devuelve la compra registrada.
+    async importarCompraXml(companyId, file) {
+      const form = new FormData();
+      form.append('company_id', String(companyId));
+      form.append('xml', file);
+      const response = await request('/v1/compras/importar-xml', { method: 'POST', body: form });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async eliminarCompra(id) {
+      const response = await request(`/v1/compras/${id}`, { method: 'DELETE' });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     // Buzón electrónico SUNAT / SUNAFIL. La API envuelve el listado en un
     // paginador de Laravel: { data: { data: [...], current_page, total } }.
     async listNotificaciones({ companyId, entidad, estado } = {}) {
