@@ -1,21 +1,50 @@
 import { useMemo, useState } from 'react';
 import {
-  Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2, RefreshCw,
-  Download, AlertCircle, BookOpen,
+  Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert,
 } from 'lucide-react';
-import { api, downloadText } from './lib/api.js';
+import { api, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
+import { buildLibroCorto } from './lib/libroCorto.js';
+import { guardarPropuesta } from './lib/repoPropuestas.js';
+import { mapVenta, mapCompra } from './lib/mapper.js';
+import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
-  empresa, notificaciones, comprobantesVenta, comprobantesCompra,
+  empresa, comprobantesVenta, comprobantesCompra,
 } from './lib/sampleData.js';
+import AccesosSol from './AccesosSol.jsx';
+import BuzonPanel from './BuzonPanel.jsx';
+import CargaMasiva from './CargaMasiva.jsx';
+import ImportacionHistorica from './ImportacionHistorica.jsx';
+import NotasGuiasPanel from './NotasGuiasPanel.jsx';
+import EmisionIndividual from './EmisionIndividual.jsx';
+import ResumenDiario from './ResumenDiario.jsx';
+import RetencionesBajas from './RetencionesBajas.jsx';
+import SeriesPanel from './SeriesPanel.jsx';
+import ValidacionPanel from './ValidacionPanel.jsx';
+
+// El tipo de cambio se resuelve por fecha contra el backend (proxy de SUNAT).
+const tipoCambio = crearServicioTipoCambio({
+  fetchCotizacion: (fecha) => api.getTipoCambio(fecha),
+});
 
 const TABS = [
   { id: 'buzon', label: 'Buzón SUNAT / SUNAFIL', icon: Bell },
   { id: 'compras', label: 'Registro de Compras', icon: ShoppingCart },
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
+  { id: 'emision', label: 'Emitir Comprobante', icon: FilePlus },
+  { id: 'masiva', label: 'Carga Masiva', icon: Upload },
+  { id: 'historico', label: 'Importar Histórico', icon: History },
+  { id: 'notas', label: 'Notas y Guías', icon: FileMinus },
+  { id: 'resumen', label: 'Resumen Diario', icon: CalendarClock },
+  { id: 'retenciones', label: 'Retenciones y Bajas', icon: Receipt },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
+  { id: 'validacion', label: 'Validación SSCO / SIRE', icon: ShieldAlert },
+  { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
+  { id: 'accesos-sol', label: 'Accesos SOL', icon: KeyRound },
+  { id: 'conexion', label: 'Conexión API', icon: Plug },
 ];
 
 const money = (value) =>
@@ -44,22 +73,49 @@ function DownloadButtons({ documento, onDownload, busy }) {
   );
 }
 
+// El backend solo permite reenviar a SUNAT lo que aún no está aceptado.
+function EnviarSunatButton({ documento, onEnviar, busy }) {
+  const aceptado = documento.estado_sunat === 'ACEPTADO';
+  if (aceptado) return <span className="text-xs text-slate-500">—</span>;
+  return (
+    <button
+      onClick={() => onEnviar(documento)}
+      disabled={busy === `enviar-${documento.id}`}
+      title="Enviar a SUNAT"
+      className="flex items-center gap-1 px-2 py-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 rounded text-xs"
+    >
+      {busy === `enviar-${documento.id}` ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+      Enviar
+    </button>
+  );
+}
+
 function EstadoBadge({ estado }) {
   const map = {
     ACEPTADO: 'bg-emerald-500/20 text-emerald-400',
     PENDIENTE: 'bg-amber-500/20 text-amber-400',
+    ENVIADO: 'bg-sky-500/20 text-sky-400',
+    PROCESANDO: 'bg-sky-500/20 text-sky-400',
     RECHAZADO: 'bg-red-500/20 text-red-400',
+    ERROR: 'bg-red-500/20 text-red-400',
   };
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-semibold ${map[estado] ?? 'bg-slate-600 text-slate-300'}`}>
-      {estado}
+      {estado ?? '—'}
     </span>
   );
 }
 
-function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }) {
+function ComprobantesTable({ documentos, contraparte, onDownload, onEnviar, onAdjuntar, busy }) {
+  if (!documentos.length) {
+    return (
+      <div className="bg-slate-800 rounded-xl border border-slate-700 p-8 text-center text-sm text-slate-400">
+        No hay comprobantes para mostrar.
+      </div>
+    );
+  }
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-x-auto">
       <table className="w-full text-left border-collapse">
         <thead>
           <tr className="border-b border-slate-700 text-slate-400 text-xs uppercase">
@@ -69,17 +125,29 @@ function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }
             <th className="p-4">Total</th>
             <th className="p-4">Estado SUNAT</th>
             <th className="p-4 text-center">Descargas (XML / PDF / CDR)</th>
+            {onEnviar && <th className="p-4 text-center">Enviar a SUNAT</th>}
+            {onAdjuntar && <th className="p-4 text-center">Adjuntar</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700 text-sm">
           {documentos.map((d) => (
-            <tr key={d.id} className="hover:bg-slate-700/50">
+            <tr key={`${d.tipo_documento}-${d.id}`} className="hover:bg-slate-700/50">
               <td className="p-4 font-mono font-medium text-blue-400">{d.serie}-{d.numero}</td>
               <td className="p-4">{(d.cliente ?? d.proveedor)?.razon_social}</td>
               <td className="p-4">{d.fecha_emision}</td>
               <td className="p-4">{money(d.total)}</td>
               <td className="p-4"><EstadoBadge estado={d.estado_sunat} /></td>
               <td className="p-4"><DownloadButtons documento={d} onDownload={onDownload} busy={busy} /></td>
+              {onEnviar && (
+                <td className="p-4 text-center">
+                  <EnviarSunatButton documento={d} onEnviar={onEnviar} busy={busy} />
+                </td>
+              )}
+              {onAdjuntar && (
+                <td className="p-4 text-center">
+                  <AdjuntarCompra documento={d} onAdjuntar={onAdjuntar} busy={busy} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
@@ -88,40 +156,130 @@ function ComprobantesTable({ documentos, titulo, onDownload, busy, contraparte }
   );
 }
 
-function LibrosPanel() {
+// El proveedor a veces solo manda el PDF: aquí se puede adjuntar el artefacto
+// que falte (XML, CDR o PDF) a una compra.
+function AdjuntarCompra({ documento, onAdjuntar, busy }) {
+  const [tipo, setTipo] = useState('pdf');
+  const ocupado = busy === `adjuntar-${documento.id}`;
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <select
+        value={tipo}
+        onChange={(e) => setTipo(e.target.value)}
+        className="bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-slate-200"
+      >
+        <option value="pdf">PDF</option>
+        <option value="xml">XML</option>
+        <option value="cdr">CDR</option>
+      </select>
+      <label className="p-1 bg-slate-700 hover:bg-slate-600 rounded cursor-pointer" title="Adjuntar archivo">
+        {ocupado ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        <input
+          type="file"
+          className="hidden"
+          disabled={ocupado}
+          onChange={(e) => { onAdjuntar(documento, tipo, e.target.files?.[0]); e.target.value = ''; }}
+        />
+      </label>
+    </div>
+  );
+}
+
+const FORMATOS = {
+  ple: {
+    etiqueta: 'PLE',
+    detalle: 'Histórico (RS 112-2021)',
+    ventas: (rows, ctx) => buildVentas141(rows, ctx),
+    compras: (rows, ctx) => buildCompras81(rows, ctx),
+  },
+  sire: {
+    etiqueta: 'SIRE',
+    detalle: 'Vigente (Anexos 3 y 11)',
+    ventas: (rows, ctx) => buildRvie(rows.map((r) => ({ ...r, periodo: ctx.periodo })), ctx),
+    compras: (rows, ctx) => buildRce(rows.map((r) => ({ ...r, periodo: ctx.periodo })), ctx),
+  },
+};
+
+function LibrosPanel({ ventas, compras, api, companyId, conectado }) {
   const [periodo, setPeriodo] = useState('2026-11');
   const [mensaje, setMensaje] = useState(null);
+  const [generando, setGenerando] = useState(false);
+  const [descargandoSire, setDescargandoSire] = useState(null);
 
-  const resumenVentas = useMemo(() => summarize(comprobantesVenta, 'ventas'), []);
-  const resumenCompras = useMemo(() => summarize(comprobantesCompra, 'compras'), []);
+  // El periodo del selector es 'YYYY-MM'; las fechas vienen como 'YYYY-MM-DD'.
+  const filtrar = (rows) => rows.filter((r) => (r.fecha_emision ?? '').startsWith(periodo));
+  const ventasPeriodo = useMemo(() => filtrar(ventas), [ventas, periodo]);
+  const comprasPeriodo = useMemo(() => filtrar(compras), [compras, periodo]);
 
-  // Cada libro se ofrece en los dos formatos: PLE (histórico) y SIRE (vigente).
-  const FORMATOS = {
-    ple: {
-      etiqueta: 'PLE',
-      detalle: 'Histórico (RS 112-2021)',
-      ventas: (rows) => buildVentas141(rows, { ruc: empresa.ruc, periodo }),
-      compras: (rows) => buildCompras81(rows, { ruc: empresa.ruc, periodo }),
-    },
-    sire: {
-      etiqueta: 'SIRE',
-      detalle: 'Vigente (Anexos 3 y 11)',
-      ventas: (rows) => buildRvie(rows.map((r) => ({ ...r, periodo })), { ruc: empresa.ruc, razon_social: empresa.razon_social }),
-      compras: (rows) => buildRce(rows.map((r) => ({ ...r, periodo })), { ruc: empresa.ruc, razon_social: empresa.razon_social }),
-    },
-  };
+  const resumenVentas = useMemo(() => summarize(ventasPeriodo, 'ventas'), [ventasPeriodo]);
+  const resumenCompras = useMemo(() => summarize(comprasPeriodo, 'compras'), [comprasPeriodo]);
 
-  function generar(tipo, formato) {
-    const rows = tipo === 'ventas' ? comprobantesVenta : comprobantesCompra;
-    const built = FORMATOS[formato][tipo](rows);
-    downloadText(built.filename, built.content);
-    setMensaje(`Generado ${built.filename} · formato ${FORMATOS[formato].etiqueta} (${rows.length} registros).`);
+  // La API no persiste el tipo de cambio: se resuelve por fecha al generar.
+  const faltaTc = tipoCambio.faltantes([...ventasPeriodo, ...comprasPeriodo]).length;
+
+  async function generar(tipo, formato) {
+    const rows = tipo === 'ventas' ? ventasPeriodo : comprasPeriodo;
+    setGenerando(true);
+    setMensaje(null);
+    try {
+      // Consulta las tasas faltantes (una vez por fecha) antes de armar el libro.
+      await tipoCambio.precargar(tipoCambio.faltantes(rows));
+      const resueltas = rows.map((r) => {
+        if (!r.moneda || r.moneda === 'PEN' || r.tipo_cambio) return r;
+        const tasa = tipoCambio.cache.get(normalizarFecha(r.fecha_emision));
+        return tasa != null ? { ...r, tipo_cambio: tasa } : r;
+      });
+      const ctx = { ruc: empresa.ruc, razon_social: empresa.razon_social, periodo };
+      const built = FORMATOS[formato][tipo](resueltas, ctx);
+      downloadText(built.filename, built.content);
+      setMensaje(`Generado ${built.filename} · formato ${FORMATOS[formato].etiqueta} (${rows.length} registros).`);
+    } catch (error) {
+      setMensaje(`No se pudo generar el libro: ${error.message}`);
+    } finally {
+      setGenerando(false);
+    }
+  }
+
+  // Excel corto: una hoja de ventas y otra de compras del periodo, con las
+  // columnas resumidas que usa el cliente (incluye Amazonía y verificación SIRE).
+  function generarExcel() {
+    setMensaje(null);
+    try {
+      const built = buildLibroCorto(ventasPeriodo, comprasPeriodo);
+      const nombre = `Libro_${periodo.replace('-', '')}_Ventas_Compras.xlsx`;
+      downloadBlob(built.bytes, nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      setMensaje(`Generado ${nombre} · ${ventasPeriodo.length} venta(s) y ${comprasPeriodo.length} compra(s).`);
+    } catch (error) {
+      setMensaje(`No se pudo generar el Excel: ${error.message}`);
+    }
   }
 
   const cards = [
     { tipo: 'ventas', titulo: 'Registro de Ventas e Ingresos', resumen: resumenVentas },
     { tipo: 'compras', titulo: 'Registro de Compras', resumen: resumenCompras },
   ];
+
+  // Propuesta SIRE generada por el backend a partir de los comprobantes
+  // registrados (RVIE/RCE). Es la que se sube al portal del SIRE. Además se
+  // archiva por periodo en el repositorio local para no volver a descargarla.
+  async function descargarPropuestaSire(tipo) {
+    if (!api || !conectado) {
+      setMensaje('Conecta la API para generar la propuesta SIRE desde el servidor.');
+      return;
+    }
+    setDescargandoSire(tipo);
+    setMensaje(null);
+    try {
+      const { texto, filename } = await api.obtenerPropuestaSire(companyId, periodo, tipo);
+      downloadText(filename, texto);
+      guardarPropuesta({ companyId, libro: tipo, periodo, contenido: texto, origen: 'servidor', nombre: filename });
+      setMensaje(`Propuesta SIRE descargada y archivada (${periodo}): ${filename}.`);
+    } catch (error) {
+      setMensaje(`No se pudo generar la propuesta SIRE: ${error.message}`);
+    } finally {
+      setDescargandoSire(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -137,9 +295,24 @@ function LibrosPanel() {
         </div>
         <p className="text-xs text-slate-400">
           Formatos oficiales SUNAT: <strong>PLE</strong> (RS 112-2021, histórico) y <strong>SIRE</strong> (vigente).
-          Separador <code>|</code>, codificación latin-1.
+          Separador <code>|</code>, codificación latin-1. El <strong>Excel</strong> es un resumen corto (ventas y compras) para el cliente.
         </p>
       </div>
+
+      <button
+        onClick={generarExcel}
+        disabled={generando || (!ventasPeriodo.length && !comprasPeriodo.length)}
+        className="flex items-center gap-2 bg-emerald-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Download size={16} /> Descargar Excel corto (ventas y compras)
+      </button>
+
+      {faltaTc > 0 && (
+        <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
+          <AlertCircle size={16} /> {faltaTc} fecha(s) con moneda extranjera sin tipo de cambio.
+          Se consultarán a SUNAT al generar (requiere el proxy <code>/v1/tipo-cambio</code> en el backend).
+        </div>
+      )}
 
       {mensaje && (
         <div className="flex items-center gap-2 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
@@ -152,7 +325,7 @@ function LibrosPanel() {
           <div key={c.tipo} className="bg-slate-800 p-5 rounded-xl border border-slate-700 space-y-3">
             <div>
               <h3 className="font-semibold">{c.titulo}</h3>
-              <p className="text-xs text-slate-400">{c.resumen.registros} registros</p>
+              <p className="text-xs text-slate-400">{c.resumen.registros} registros en {periodo}</p>
             </div>
             <dl className="text-sm space-y-1">
               <div className="flex justify-between"><dt className="text-slate-400">Base gravada</dt><dd>{money(c.resumen.bi_gravada)}</dd></div>
@@ -172,15 +345,190 @@ function LibrosPanel() {
                 <button
                   key={key}
                   onClick={() => generar(c.tipo, key)}
+                  disabled={!c.resumen.registros || generando}
                   title={f.detalle}
-                  className="flex items-center justify-center gap-2 bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-500"
+                  className="flex items-center justify-center gap-2 bg-blue-600 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Download size={15} /> {f.etiqueta}
+                  {generando ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} {f.etiqueta}
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => descargarPropuestaSire(c.tipo)}
+              disabled={descargandoSire !== null}
+              title="Propuesta SIRE generada por el backend (la que se sube al portal)"
+              className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {descargandoSire === c.tipo ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Propuesta SIRE (servidor)
+            </button>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ConexionPanel({ onConectar, onRegistrar, conectado, cargando, error, token }) {
+  const [modo, setModo] = useState('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [form, setForm] = useState({
+    name: '',
+    razon_social: '',
+    ruc: '',
+    direccion: '',
+    ubigeo: '',
+    distrito: '',
+    provincia: '',
+    departamento: '',
+    usuario_sol: '',
+    clave_sol: '',
+  });
+  const [certificado, setCertificado] = useState(null);
+
+  const setCampo = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+
+  function registrar() {
+    const payload = { email, password, ...form };
+    if (certificado) {
+      const fd = new FormData();
+      Object.entries(payload).forEach(([k, v]) => fd.append(k, v));
+      fd.append('certificado_pem', certificado);
+      onRegistrar(fd);
+    } else {
+      onRegistrar(payload);
+    }
+  }
+
+  const inputCls = 'w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
+
+  return (
+    <div className="max-w-lg space-y-4">
+      <h3 className="text-xl font-bold">Conexión a la API de facturación</h3>
+      <div className="flex gap-2">
+        {[['login', 'Ingresar'], ['registro', 'Crear empresa']].map(([valor, texto]) => (
+          <button
+            key={valor}
+            onClick={() => setModo(valor)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium ${modo === valor ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+          >
+            {texto}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+        {modo === 'login' ? (
+          <>
+            <p className="text-sm text-slate-400">
+              Ingresa con las credenciales del backend Laravel. Al conectar, los comprobantes
+              emitidos se cargan desde <code>/api/v1/invoices</code> y <code>/api/v1/boletas</code>.
+            </p>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Correo</label>
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+            </div>
+            <button
+              onClick={() => onConectar({ email, password })}
+              disabled={cargando}
+              className="w-full flex items-center justify-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50"
+            >
+              {cargando ? <Loader2 size={16} className="animate-spin" /> : <Plug size={16} />}
+              {cargando ? 'Conectando…' : 'Conectar y cargar'}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="text-sm text-slate-400">
+              Registra tu empresa y empieza a emitir. Se crean tu empresa, su sucursal principal
+              y tu usuario administrador. Las credenciales SOL y el certificado son opcionales y
+              puedes completarlos después en Accesos SOL.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Tu nombre</label>
+                <input value={form.name} onChange={setCampo('name')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Razón social</label>
+                <input value={form.razon_social} onChange={setCampo('razon_social')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">RUC (11 dígitos)</label>
+                <input value={form.ruc} onChange={setCampo('ruc')} maxLength={11} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Correo</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Contraseña</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Dirección</label>
+                <input value={form.direccion} onChange={setCampo('direccion')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Ubigeo (6 dígitos)</label>
+                <input value={form.ubigeo} onChange={setCampo('ubigeo')} maxLength={6} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Distrito</label>
+                <input value={form.distrito} onChange={setCampo('distrito')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Provincia</label>
+                <input value={form.provincia} onChange={setCampo('provincia')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Departamento</label>
+                <input value={form.departamento} onChange={setCampo('departamento')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Usuario SOL (opcional)</label>
+                <input value={form.usuario_sol} onChange={setCampo('usuario_sol')} className={inputCls} />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Clave SOL (opcional)</label>
+                <input type="password" value={form.clave_sol} onChange={setCampo('clave_sol')} className={inputCls} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1">Certificado digital (.pem, opcional)</label>
+              <input
+                type="file"
+                accept=".pem,.crt,.cer,.txt"
+                onChange={(e) => setCertificado(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-slate-300"
+              />
+            </div>
+            <button
+              onClick={registrar}
+              disabled={cargando}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {cargando ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+              {cargando ? 'Registrando…' : 'Crear empresa y entrar'}
+            </button>
+          </>
+        )}
+
+        {conectado && (
+          <p className="flex items-center gap-2 text-sm text-emerald-400">
+            <CheckCircle2 size={16} /> Conectado. Token: {token ? `${token.slice(0, 8)}…` : '—'}
+          </p>
+        )}
+        {error && (
+          <p className="flex items-center gap-2 text-sm text-red-400">
+            <AlertCircle size={16} /> {error}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -190,13 +538,118 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('buzon');
   const [busy, setBusy] = useState(null);
   const [aviso, setAviso] = useState(null);
+
+  const [ventas, setVentas] = useState(comprobantesVenta);
+  const [compras, setCompras] = useState(comprobantesCompra);
+  const [fuente, setFuente] = useState('demo');
+  const [token, setToken] = useState(null);
+  const [companyId, setCompanyId] = useState(null);
+  const [cargando, setCargando] = useState(false);
+  const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  // Envío asíncrono: el backend encola el comprobante y reintenta solo.
+  const [envioAsync, setEnvioAsync] = useState(false);
+
+  async function conectar({ email, password }) {
+    setCargando(true);
+    setErrorConexion(null);
+    try {
+      const sesion = await api.login({ email, password });
+      await cargarTrasSesion(sesion);
+      setAviso('Sesión iniciada correctamente.');
+    } catch (error) {
+      setErrorConexion(error.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // Onboarding self-service: crea la empresa y deja la sesión lista.
+  async function registrar(payload) {
+    setCargando(true);
+    setErrorConexion(null);
+    try {
+      const sesion = await api.register(payload);
+      await cargarTrasSesion(sesion);
+      setAviso(`Empresa ${sesion.company?.razon_social ?? ''} registrada. Ya puedes emitir comprobantes.`);
+    } catch (error) {
+      setErrorConexion(error.message);
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  // Carga los datos del backend una vez que hay token (login o registro).
+  async function cargarTrasSesion(sesion) {
+    setToken(sesion.access_token ?? sesion.token ?? null);
+    const idEmpresa = sesion.user?.company_id ?? null;
+    setCompanyId(idEmpresa);
+
+    const emitidos = await api.listVentas();
+    setVentas(emitidos.map((d) => mapVenta(d)));
+
+    // Compras (recibidos): la API las expone por empresa.
+    let recibidos = [];
+    if (idEmpresa) {
+      const res = await api.listCompras({ companyId: idEmpresa });
+      recibidos = res.items ?? [];
+    }
+    setCompras(recibidos.map((d) => mapCompra(d)));
+
+    setFuente('api');
+    setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) y ${recibidos.length} recibido(s) cargado(s) desde la API.`);
+  }
+
+  function volverADemo() {
+    setVentas(comprobantesVenta);
+    setCompras(comprobantesCompra);
+    setFuente('demo');
+    setToken(null);
+    setCompanyId(null);
+    api.setToken(null);
+    setAviso('Se restauraron los datos de demostración.');
+  }
+
+  async function recargarCompras(id = companyId) {
+    if (!id) return;
+    const res = await api.listCompras({ companyId: id });
+    setCompras((res.items ?? []).map((d) => mapCompra(d)));
+  }
+
+  async function recargarVentas() {
+    const emitidos = await api.listVentas();
+    setVentas(emitidos.map((d) => mapVenta(d)));
+  }
+
+  async function handleImportarCompra(file) {
+    if (!file) return;
+    if (!companyId) {
+      setAviso('Conecta la API para importar comprobantes.');
+      return;
+    }
+    setBusy('importar-compra');
+    setAviso(null);
+    try {
+      const compra = await api.importarCompraXml(companyId, file);
+      await recargarCompras();
+      setAviso(`Comprobante ${compra.numero_completo ?? ''} importado desde el XML.`);
+    } catch (error) {
+      setAviso(`No se pudo importar el XML: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function handleDownload(documento, format) {
     setBusy(`${documento.id}-${format}`);
     setAviso(null);
     try {
-      await api.download(documento.tipo_documento, documento.id, format);
+      // Las compras tienen su propio recurso de descarga.
+      if (documento.origen === 'compra') {
+        await api.descargarCompra(documento.id, format);
+      } else {
+        await api.download(documento.tipo_documento, documento.id, format);
+      }
       setAviso(`Descarga ${format.toUpperCase()} iniciada para ${documento.serie}-${documento.numero}.`);
     } catch (error) {
       setAviso(`No se pudo descargar ${format.toUpperCase()}: ${error.message}`);
@@ -205,12 +658,56 @@ export default function App() {
     }
   }
 
-  const guiasFiltradas = comprobantesVenta.filter((d) => {
+  async function handleAdjuntar(documento, tipo, file) {
+    if (!file) return;
+    setBusy(`adjuntar-${documento.id}`);
+    setAviso(null);
+    try {
+      await api.adjuntarCompra(documento.id, tipo, file);
+      await recargarCompras();
+      setAviso(`Se adjuntó el ${tipo.toUpperCase()} a la compra ${documento.serie}-${documento.numero}.`);
+    } catch (error) {
+      setAviso(`No se pudo adjuntar el ${tipo.toUpperCase()}: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleEnviar(documento) {
+    setBusy(`enviar-${documento.id}`);
+    setAviso(null);
+    try {
+      const recurso = String(documento.tipo_documento).startsWith('03') ? 'boletas' : 'invoices';
+      await api.enviarSunat(recurso, documento.id, { async: envioAsync });
+      if (envioAsync) {
+        setAviso(`Comprobante ${documento.serie}-${documento.numero} encolado: se enviará a SUNAT con reintentos automáticos.`);
+        return;
+      }
+      const emitidos = await api.listVentas();
+      setVentas(emitidos.map((d) => mapVenta(d)));
+      setAviso(`Comprobante ${documento.serie}-${documento.numero} enviado a SUNAT.`);
+    } catch (error) {
+      setAviso(`No se pudo enviar a SUNAT: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const filtrados = (rows) => {
     const q = busqueda.trim().toLowerCase();
-    if (!q) return true;
-    return `${d.serie}-${d.numero}`.toLowerCase().includes(q)
-      || (d.cliente?.razon_social ?? '').toLowerCase().includes(q);
-  });
+    if (!q) return rows;
+    return rows.filter((d) =>
+      `${d.serie}-${d.numero}`.toLowerCase().includes(q)
+      || (d.cliente ?? d.proveedor)?.razon_social?.toLowerCase().includes(q));
+  };
+
+  // Abre un comprobante en su registro: cambia de pestaña y deja la búsqueda
+  // puesta en serie-número para que quede resaltado en la tabla.
+  function irAComprobante(ref) {
+    if (!ref) return;
+    setActiveTab(ref.libro === 'compras' ? 'compras' : 'facturas');
+    setBusqueda(`${ref.serie}-${ref.numero}`);
+  }
 
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
@@ -230,13 +727,21 @@ export default function App() {
             </button>
           ))}
         </nav>
+        <div className="p-4 border-t border-slate-700">
+          <button
+            onClick={volverADemo}
+            className="w-full text-xs text-slate-400 hover:text-slate-200 underline"
+          >
+            Restaurar datos demo
+          </button>
+        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6">
           <h2 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')}</h2>
-          <span className="text-xs bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full border border-emerald-500/30">
-            Sistema Conectado
+          <span className={`text-xs px-3 py-1 rounded-full border ${fuente === 'api' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-600/40 text-slate-300 border-slate-600'}`}>
+            {fuente === 'api' ? 'API conectada' : 'Datos demo'}
           </span>
         </header>
 
@@ -247,38 +752,38 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'buzon' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold">Notificaciones Electrónicas en Tiempo Real</h3>
-                <button className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500">
-                  <RefreshCw size={16} /> Sincronizar Buzones
-                </button>
-              </div>
-              <div className="grid gap-3">
-                {notificaciones.map((n) => (
-                  <div key={n.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
-                    <div>
-                      <span className={`text-xs px-2 py-0.5 rounded font-semibold ${n.entidad === 'SUNAT' ? 'bg-amber-500/20 text-amber-400' : 'bg-purple-500/20 text-purple-400'}`}>
-                        {n.entidad}
-                      </span>
-                      <h4 className="font-medium mt-1">{n.titulo}</h4>
-                      <p className="text-xs text-slate-400">Fecha: {n.fecha} · {n.tipo}</p>
-                    </div>
-                    <button className="text-blue-400 hover:underline text-sm">Ver Detalle</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {activeTab === 'buzon' && <BuzonPanel conectado={fuente === 'api'} />}
 
           {activeTab === 'compras' && (
             <div className="space-y-4">
-              <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar serie o proveedor..."
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                  <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${companyId ? 'bg-blue-600 hover:bg-blue-500 cursor-pointer' : 'bg-slate-700 opacity-50 cursor-not-allowed'}`}>
+                    {busy === 'importar-compra' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                    Importar XML
+                    <input
+                      type="file"
+                      accept=".xml,application/xml,text/xml"
+                      className="hidden"
+                      disabled={!companyId}
+                      onChange={(e) => { handleImportarCompra(e.target.files?.[0]); e.target.value = ''; }}
+                    />
+                  </label>
+                </div>
+              </div>
               <ComprobantesTable
-                documentos={comprobantesCompra}
+                documentos={filtrados(compras)}
                 contraparte="Proveedor"
                 onDownload={handleDownload}
+                onAdjuntar={handleAdjuntar}
                 busy={busy}
               />
             </div>
@@ -286,15 +791,57 @@ export default function App() {
 
           {activeTab === 'facturas' && (
             <div className="space-y-4">
-              <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-300" title="Encola el envío y reintenta solo si SUNAT falla o está lento">
+                    <input
+                      type="checkbox"
+                      checked={envioAsync}
+                      onChange={(e) => setEnvioAsync(e.target.checked)}
+                    />
+                    Envío en segundo plano (con reintentos)
+                  </label>
+                  <input
+                    type="text"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar serie o cliente..."
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
               <ComprobantesTable
-                documentos={comprobantesVenta}
+                documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
+                onEnviar={handleEnviar}
                 busy={busy}
               />
             </div>
           )}
+
+          {activeTab === 'emision' && (
+            <EmisionIndividual
+              api={api}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+              onEmitido={recargarVentas}
+            />
+          )}
+
+          {activeTab === 'masiva' && (
+            <CargaMasiva api={api} companyId={companyId} conectado={fuente === 'api'} />
+          )}
+
+          {activeTab === 'historico' && (
+            <ImportacionHistorica api={api} companyId={companyId} conectado={fuente === 'api'} />
+          )}
+
+          {activeTab === 'notas' && <NotasGuiasPanel conectado={fuente === 'api'} />}
+
+          {activeTab === 'resumen' && <ResumenDiario conectado={fuente === 'api'} />}
+          {activeTab === 'retenciones' && <RetencionesBajas conectado={fuente === 'api'} />}
 
           {activeTab === 'guias' && (
             <div className="space-y-4">
@@ -314,15 +861,46 @@ export default function App() {
                 </div>
               </div>
               <ComprobantesTable
-                documentos={guiasFiltradas}
+                documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
+                onEnviar={handleEnviar}
                 busy={busy}
               />
             </div>
           )}
 
-          {activeTab === 'libros' && <LibrosPanel />}
+          {activeTab === 'libros' && (
+            <LibrosPanel
+              ventas={ventas}
+              compras={compras}
+              api={api}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+            />
+          )}
+          {activeTab === 'validacion' && (
+            <ValidacionPanel
+              ventas={ventas}
+              compras={compras}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+              irAComprobante={irAComprobante}
+            />
+          )}
+          {activeTab === 'series' && <SeriesPanel conectado={fuente === 'api'} />}
+          {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
+
+          {activeTab === 'conexion' && (
+            <ConexionPanel
+              onConectar={conectar}
+              onRegistrar={registrar}
+              conectado={fuente === 'api'}
+              cargando={cargando}
+              error={errorConexion}
+              token={token}
+            />
+          )}
         </div>
       </main>
     </div>

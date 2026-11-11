@@ -21,11 +21,16 @@ npm test         # pruebas de los generadores PLE
 
 | Módulo | Descripción |
 |---|---|
-| Buzón SUNAT / SUNAFIL | Notificaciones electrónicas unificadas. |
-| Registro de Compras | Comprobantes recibidos con descarga XML/PDF/CDR. |
+| Buzón SUNAT / SUNAFIL | Notificaciones electrónicas **por empresa**, con sincronización y alta manual. |
+| Registro de Compras | Comprobantes recibidos **por empresa**: alta manual o importando el XML UBL del proveedor. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
+| Emitir Comprobante | Emisión individual de una factura o boleta (cliente + ítems), con envío opcional a SUNAT. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
-| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1. |
+| Notas y Guías | Emite notas de crédito/débito y guías de remisión; envía a SUNAT y descarga XML/CDR/PDF. |
+| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, la propuesta SIRE del servidor y un Excel corto (ventas y compras). |
+| Series por sucursal | Configura las series (F001, B001…) y el correlativo de cada tipo de documento por sucursal. |
+| Importar Histórico | Carga el histórico de ventas y compras de períodos anteriores desde el TXT del PLE o una plantilla CSV/XLSX. |
+| Accesos SOL | Credenciales SOL (SUNAT) y certificado digital **por empresa**, ambiente y leyenda de Amazonía. |
 
 ## Descarga de comprobantes
 
@@ -33,14 +38,88 @@ Los botones XML / PDF / CDR llaman a la API de facturación electrónica
 (Laravel + Greenter):
 
 ```
-GET {VITE_API_URL}/v1/invoices/{id}/download-xml
-GET {VITE_API_URL}/v1/invoices/{id}/download-cdr
-GET {VITE_API_URL}/v1/invoices/{id}/download-pdf
-GET {VITE_API_URL}/v1/boletas/{id}/download-{xml|cdr|pdf}
+POST {VITE_API_URL}/auth/login              -> { access_token, user }
+GET  {VITE_API_URL}/v1/invoices             -> paginador
+GET  {VITE_API_URL}/v1/boletas              -> array
+GET  {VITE_API_URL}/v1/invoices/{id}/download-xml|cdr|pdf
+GET  {VITE_API_URL}/v1/boletas/{id}/download-xml|cdr|pdf
 ```
 
 Configura la URL del backend con la variable `VITE_API_URL` (por defecto `/api`).
-La autenticación usa Laravel Sanctum (`POST /auth/login`).
+La autenticación usa Laravel Sanctum.
+
+### Conectar la API
+
+La pestaña **Conexión API** permite iniciar sesión con las credenciales del
+backend. Al conectar, los comprobantes emitidos se cargan desde la API y se
+mapean (`src/lib/mapper.js`) a las filas que consumen los generadores de libros.
+El botón **Restaurar datos demo** vuelve a la fuente local.
+
+Notas del contrato real de la API:
+
+- El login devuelve `access_token` (no `token`).
+- `GET /v1/invoices` devuelve un **paginador** (`data.data[]`); `GET /v1/boletas`
+  devuelve un **array plano** (`data[]`). El cliente normaliza ambos.
+- **La API no persiste el tipo de cambio** (solo existe dentro del JSON del
+  detalle al emitir). La PWA lo resuelve por fecha al generar el libro (ver
+  abajo).
+- El Registro de Compras ya no depende de la fuente local: se alimenta del
+  endpoint `/v1/compras` (ver más abajo).
+
+## Registro de compras (comprobantes recibidos)
+
+La API de facturación emite comprobantes propios, pero no exponía los
+**recibidos**. El backend incorpora un registro de compras por empresa:
+
+```
+GET    {VITE_API_URL}/v1/compras?company_id=&fecha_desde=&fecha_hasta=&estado_sunat=
+POST   {VITE_API_URL}/v1/compras                       (alta manual)
+POST   {VITE_API_URL}/v1/compras/importar-xml          (multipart: company_id + xml)
+GET    {VITE_API_URL}/v1/compras/{id}
+DELETE {VITE_API_URL}/v1/compras/{id}
+```
+
+El listado es un paginador (`data.data[]`). Cada compra se deduplica por
+`(empresa, proveedor, tipo, serie, correlativo)`: volver a registrar o importar
+el mismo comprobante lo **actualiza** en vez de duplicarlo. El modelo expone
+`proveedor` anidado (`tipo_documento`, `numero_documento`, `razon_social`) con el
+mismo vocabulario que consume `mapCompra`.
+
+Al conectar la API, la pestaña **Registro de Compras** carga las compras de la
+empresa del usuario y ofrece el botón **Importar XML** para subir el XML UBL del
+proveedor; el backend extrae serie, RUC, razón social, moneda, tipo de cambio y
+los importes por bucket de tributo.
+
+## Tipo de cambio (proxy requerido en el backend)
+
+La API no guarda el tipo de cambio, así que se resuelve por fecha al generar el
+libro. SUNAT publica la tasa del día en un archivo de texto:
+
+```
+https://www.sunat.gob.pe/a/txt/tipoCambio.txt   ->  10/11/2026|3.409|3.418|
+```
+
+Ese archivo **no se puede leer desde el navegador**: responde
+`Access-Control-Allow-Origin: https://ww3.sunat.gob.pe`, así que CORS lo bloquea.
+Además solo trae la tasa del día, sin histórico. Por eso el backend debe exponer
+un proxy con caché por fecha:
+
+```
+GET {VITE_API_URL}/v1/tipo-cambio?fecha=2026-11-10
+  -> { "success": true, "message": "...",
+       "data": { "fecha": "2026-11-10", "compra": 3.409, "venta": 3.418 } }
+```
+
+El cliente acepta JSON (y desenvuelve `data`) o el TXT crudo de SUNAT. Se usa la
+**tasa de venta** para convertir la operación a soles. `src/lib/tipoCambio.js`
+cachea por fecha (una sola consulta aunque haya muchos comprobantes del mismo
+día) y deduplica las peticiones simultáneas.
+
+**Backend (Laravel):** el proxy está implementado en el PR
+[`bvislao/Api-de-facturacion-electronica-sunat-Peru#1`](https://github.com/bvislao/Api-de-facturacion-electronica-sunat-Peru/pull/1)
+(endpoint `GET /api/v1/tipo-cambio`, tabla `tipo_cambios` y comando diario
+`sunat:sync-tipo-cambio`). Como SUNAT solo publica la tasa del día, el backend la
+persiste a diario para ir acumulando el histórico.
 
 ## Libros Electrónicos (PLE y SIRE)
 
@@ -65,6 +144,160 @@ PLE:  LE + RUC(11) + AAAAMM + 00 + libro(6) + 001111 + .TXT
 SIRE: LE + RUC(11) + AAAAMM + 00 + libro(6) + 021112 + .TXT   (02 = reemplaza la propuesta)
 ```
 
+La PWA genera estos archivos en el navegador, pero el backend también puede
+generar la **propuesta del SIRE** a partir de los comprobantes registrados en la
+base de datos (útil para emitir el entregable oficial sin depender de los datos
+de la pantalla):
+
+```
+GET {VITE_API_URL}/v1/sire/ventas?company_id=&periodo=AAAA-MM   -> TXT (descarga)
+GET {VITE_API_URL}/v1/sire/compras?company_id=&periodo=AAAA-MM  -> TXT (descarga)
+GET {VITE_API_URL}/v1/sire/ventas?company_id=&periodo=&preview=1 -> JSON {filename, registros, contenido}
+```
+
+En la pestaña **Libros Electrónicos**, el botón **Propuesta SIRE (servidor)**
+descarga ese archivo con el nombre oficial; con `preview=1` se puede revisar el
+contenido en JSON antes de subirlo al portal.
+
+### Libro corto (Excel)
+
+Además de los formatos oficiales, el botón **Excel** descarga
+`Libro_AAAAMM_Ventas_Compras.xlsx` con dos hojas, pensadas como resumen para el
+cliente. Columnas por registro:
+
+```
+Fecha | RUC | Cliente/Proveedor | Descripción | Base | IGV | Inafecto |
+Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía
+```
+
+- **Estado**: `Aceptado`, `Pendiente`, `Anulado`, etc. según la respuesta de SUNAT.
+- **Verificación SIRE**: qué artefactos existen del comprobante (`XML`, `CDR`, `PDF`).
+- **Amazonía**: mensaje de la leyenda de exoneración del IGV de la Ley de la
+  Amazonía (catálogo n.º 52): `2001` bienes, `2002` servicios, `2003` contratos
+  de construcción. La última fila de cada hoja es un `TOTAL`.
+
+El `.xlsx` se genera en el navegador sin dependencias (`src/lib/xlsx.js`, un
+escritor ZIP + OOXML mínimo) y lo consume `src/lib/libroCorto.js`.
+
+## Buzón electrónico (SUNAT / SUNAFIL)
+
+Con la API conectada, la pestaña **Buzón SUNAT / SUNAFIL** muestra las
+notificaciones reales de la empresa seleccionada, permite filtrar por entidad,
+marcarlas como leídas, registrarlas manualmente y **sincronizar** el buzón.
+
+Cada notificación pertenece a una empresa y se deduplica por
+`(empresa, entidad, código)`. El backend (`/api/v1/notificaciones`) usa un
+adaptador configurable: si se define `SUNAT_BUZON_ENDPOINT` o
+`SUNAFIL_BUZON_ENDPOINT`, sincroniza desde ese endpoint; si no, el alta manual
+sigue disponible. SUNAT y SUNAFIL no publican una API REST pública del buzón,
+por lo que sin endpoint la sincronización no trae novedades (no es un error).
+
+Sin API conectada, la pestaña muestra datos de demostración.
+
+## Series por sucursal
+
+La pestaña **Series por sucursal** administra, por empresa y sucursal, las series
+y correlativos de cada tipo de documento SUNAT (factura, boleta, notas, guías…).
+El correlativo que se muestra es el **último usado**: el próximo comprobante
+continúa en `+1`. El backend ya expone el CRUD:
+
+```
+GET    {VITE_API_URL}/v1/branches?company_id=            -> sucursales
+GET    {VITE_API_URL}/v1/correlatives/document-types     -> tipos de documento
+GET    {VITE_API_URL}/v1/branches/{branch}/correlatives
+POST   {VITE_API_URL}/v1/branches/{branch}/correlatives  (tipo_documento, serie, correlativo_inicial)
+PUT    {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
+DELETE {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
+```
+
+Cada sucursal lleva su propio numerador, de modo que dos locales pueden emitir
+facturas con series distintas sin chocar entre sí.
+
+## Emisión individual
+
+La pestaña **Emitir Comprobante** arma una **factura** o **boleta** de una sola
+vez: empresa y sucursal, serie y fecha, cliente (tipo/número de documento,
+razón social y dirección) y los ítems con unidad, cantidad, valor unitario y
+tipo de afectación al IGV. Para la factura se indica la **forma de pago**
+(contado/crédito) y la fecha de vencimiento; la boleta se envía de forma
+individual.
+
+El correlativo lo asigna el backend por sucursal. La casilla *Enviar a SUNAT
+después de emitir* encadena la emisión y el envío; el comprobante aparece luego
+en la pestaña *Facturación & Boletas* para descargar XML/CDR/PDF.
+
+```
+POST {VITE_API_URL}/v1/invoices    (factura)
+POST {VITE_API_URL}/v1/boletas     (boleta)
+```
+
+## Notas y guías
+
+La pestaña **Notas y Guías** emite los tres documentos que acompañan a la
+facturación y deja el camino armado para nuevas series:
+
+- **Notas de crédito** (07) y **notas de débito** (08): se elige el tipo de
+  documento afectado (factura o boleta), su número, el **motivo** del catálogo
+  SUNAT (códigos 01–13 y 01–11 respectivamente) y una descripción. El cliente se
+  indica con tipo/número de documento y razón social.
+- **Guías de remisión** (09): destinatario (cliente de la empresa), motivo y
+  modalidad de traslado, direcciones de partida y llegada, peso y bultos, y los
+  datos de transporte según la modalidad (transportista para la pública,
+  conductor y placa para la privada).
+
+La **serie** se escribe a mano (se administra en la pestaña *Series por
+sucursal*) y el **correlativo lo asigna el backend** por sucursal y tipo de
+documento. Tras emitir, cada documento se puede **enviar a SUNAT** y descargar
+en **XML/CDR/PDF** desde la tabla de emitidos.
+
+```
+POST {VITE_API_URL}/v1/credit-notes            (nota de crédito)
+POST {VITE_API_URL}/v1/debit-notes             (nota de débito)
+POST {VITE_API_URL}/v1/dispatch-guides         (guía de remisión)
+POST {VITE_API_URL}/v1/{recurso}/{id}/send-sunat
+GET  {VITE_API_URL}/v1/{recurso}/{id}/download-{xml,cdr,pdf}
+GET  {VITE_API_URL}/v1/credit-notes/catalogs/motivos
+GET  {VITE_API_URL}/v1/debit-notes/catalogs/motivos
+GET  {VITE_API_URL}/v1/dispatch-guides/catalogs/{transfer-reasons,transport-modes}
+```
+
+## Importar Histórico
+
+La pestaña **Importar Histórico** carga los comprobantes de meses o años
+anteriores en el Registro de Compras y en el de Ventas. Acepta dos orígenes:
+
+- El **TXT del PLE** que se descarga de SUNAT: Registro de Ventas 14.1 (34
+  campos) y Registro de Compras 8.1 (41 campos). El formato se detecta por el
+  número de campos de la primera línea.
+- Una **plantilla CSV/XLSX** propia (botón *Descargar plantilla*) con una columna
+  `tipo_registro` (`ventas` o `compras`) y el resto de columnas del comprobante.
+
+Los comprobantes se registran con estado `ACEPTADO` y **sin enviarse a SUNAT**,
+porque ya fueron declarados en su período. La operación es idempotente: reimportar
+el mismo archivo actualiza los comprobantes existentes en vez de duplicarlos. Las
+notas de crédito (07) y débito (08) del PLE de ventas se omiten y se informan en
+el resumen; los importes mixtos y no gravados del PLE de compras se suman a sus
+buckets principales para no perder el monto en el libro.
+
+```
+POST {VITE_API_URL}/v1/historical/importar   (multipart: archivo, company_id, branch_id?)
+GET  {VITE_API_URL}/v1/historical/plantilla?tipo=ventas|compras
+```
+
+## Accesos SOL (multiempresa)
+
+La pestaña **Accesos SOL** permite configurar, para cada empresa, sus credenciales
+SOL secundarias de SUNAT, su certificado digital y su ambiente (beta o producción).
+También activa la leyenda de exoneración del IGV de la Amazonía (catálogo n.º 52),
+eligiendo el tipo de operación (2001 bienes, 2002 servicios, 2003 contratos).
+
+Cada empresa tiene sus propias credenciales y su **propio certificado**; el backend
+resuelve el certificado por RUC, de modo que dar de alta una segunda empresa no
+sobrescribe el de la primera.
+
+La clave SOL y la clave del certificado nunca se muestran: si se dejan vacías al
+guardar, se conserva el valor existente.
+
 ## Estructura
 
 ```
@@ -72,12 +305,23 @@ index.html
 public/            manifest.json, sw.js
 src/
   App.jsx          interfaz (pestañas, descargas, panel de libros)
+  AccesosSol.jsx   gestión multiempresa de credenciales SOL y certificado
+  BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
+  CargaMasiva.jsx  emisión masiva de comprobantes (plantilla CSV/XLSX)
+  ImportacionHistorica.jsx  importación de períodos anteriores (PLE / plantilla)
+  EmisionIndividual.jsx  emisión individual de facturas y boletas
+  NotasGuiasPanel.jsx  emisión de notas de crédito/débito y guías de remisión
+  SeriesPanel.jsx  series y correlativos por sucursal
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind
   lib/
     api.js         cliente de la API de facturación
+    mapper.js      comprobante de la API -> fila de libro
+    tipoCambio.js  tipo de cambio SUNAT por fecha (proxy del backend)
     ple.js         generadores PLE 14.1 / 8.1
     sire.js        generadores SIRE RVIE / RCE
-    *.test.js      pruebas de los generadores
+    xlsx.js        escritor .xlsx mínimo (ZIP + OOXML), sin dependencias
+    libroCorto.js  Excel corto de ventas y compras
+    *.test.js      pruebas de los generadores y del mapeador
     sampleData.js  datos de demostración
 ```
