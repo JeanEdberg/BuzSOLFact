@@ -131,6 +131,8 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
         cantidad: Number(d.cantidad),
         mto_valor_unitario: Number(d.mto_valor_unitario),
         tip_afe_igv: d.tip_afe_igv,
+        // La boleta exige el porcentaje de IGV; gravado = 18, resto = 0.
+        porcentaje_igv: d.tip_afe_igv === '10' ? 18 : 0,
       })),
     };
 
