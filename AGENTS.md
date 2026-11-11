@@ -187,7 +187,8 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   enviados; con archivo se usa `POST` + `_method=PUT`). El formulario de Accesos SOL
   manda únicamente `usuario_sol`/`clave_sol`, así que no exigir el resto de datos.
 - `credit-notes` / `debit-notes`: `GET /catalogs/motivos`, `GET /` (paginador),
-  `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`.
+  `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`, `POST /{id}/send-sunat` y
+  `GET /{id}/download-{xml,cdr,pdf}`.
 - `daily-summaries` (resumen diario de boletas, tipo RC): `GET /` (paginador),
   `GET /pending?company_id=&branch_id=&fecha_emision=` (boletas PENDIENTES de la
   fecha), `POST /` (agrupa las pendientes y asigna correlativo), `POST /{id}/send-sunat`,
@@ -204,13 +205,15 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   `GET /{id}/download-{xml,cdr}`. El correlativo del RA es por fecha de
   comunicación; `numero_completo` = `RA-AAAAMMDD-correlativo`.
 - `dispatch-guides`: `GET /catalogs/transfer-reasons`, `GET /catalogs/transport-modes`,
-  `GET /` (paginador), `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`. El payload
+  `GET /` (paginador), `POST /`, `GET /{id}`, `POST /{id}/generate-pdf`,
+  `POST /{id}/send-sunat` y `GET /{id}/download-{xml,cdr,pdf}`. El payload
   usa `fec_traslado` (se normaliza a `fecha_traslado`) y `destinatario_id`.
-  Acepta `documentos_relacionados` (array `{tipo, tipo_desc, numero[, emisor]}`,
+  Acepta `documentos_relacionados` (array `{tipo, tipo_desc, numero[, fecha]}`,
   catálogo 61: la factura que sustenta el traslado) y `datos_adicionales`; ambos se
   persisten y `documentos_relacionados` se emite en el XML como
   `cac:AdditionalDocumentReference` (`GreenterService::createDespatch` →
-  `Despatch::setAddDocs`).
+  `Despatch::setAddDocs`) y se imprime en el PDF de la guía ("DOCUMENTOS
+  RELACIONADOS") en todos los formatos.
 - `invoices`: `GET /` acepta el filtro `cliente_numero_documento` (RUC/DNI del
   cliente) para listar las facturas de un cliente y vincularlas a una guía.
 - `consulta-documento`: `GET /consulta-documento?tipo_documento=6|1&numero_documento=…`
@@ -284,6 +287,16 @@ Notas de entorno y convenciones del backend:
 - **Generación de PDF**: DomPDF embebe el QR como imagen, así que requiere la
   extensión **GD** de PHP (`php8.4-gd`). Sin ella, `generate-pdf` devuelve 500
   (`The PHP GD extension is required`).
+- **QR en todos los formatos**: el QR (obligatorio en la representación impresa)
+  debe salir en factura, boleta, notas 07/08 y guías, en `A4`, `A5`, `80mm` y
+  `50mm`. `resources/views/pdf/components/qr-footer.blade.php` envuelve el bloque
+  en `.qr-info-container` (`display: table`): sin ese contenedor, el
+  `display: table-cell` de `.qr-section` rompe DomPDF y el QR desaparece en A5.
+  Las notas de 80mm/50mm reutilizan `components/reference-document` (no imprimir
+  los arrays `$documento_afectado`/`$motivo` directamente).
+  `tests/Feature/QrPdfTest.php` verifica que el PDF contenga un XObject de imagen
+  (`/Image`) en cada formato; los documentos se crean con `Model::create()` (no
+  existen factories de `Invoice`/`Boleta`).
 - **Trait de configuración**: `Company` usa `HasCompanyConfigurations` (tabla
   `company_configurations`), no `ConfigurableCompany`. Las credenciales GRE viven
   en columnas `gre_*` de `companies` y se leen con `getConfig('credenciales_gre.{modo}')`
