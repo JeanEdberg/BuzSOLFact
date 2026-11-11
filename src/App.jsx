@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
@@ -19,6 +19,7 @@ import ImportacionHistorica from './ImportacionHistorica.jsx';
 import NotasGuiasPanel from './NotasGuiasPanel.jsx';
 import EmisionIndividual from './EmisionIndividual.jsx';
 import ResumenDiario from './ResumenDiario.jsx';
+import RetencionesBajas from './RetencionesBajas.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
 
 const api = createApi();
@@ -37,6 +38,7 @@ const TABS = [
   { id: 'historico', label: 'Importar Histórico', icon: History },
   { id: 'notas', label: 'Notas y Guías', icon: FileMinus },
   { id: 'resumen', label: 'Resumen Diario', icon: CalendarClock },
+  { id: 'retenciones', label: 'Retenciones y Bajas', icon: Receipt },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
   { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
@@ -660,6 +662,7 @@ export default function App() {
           {activeTab === 'notas' && <NotasGuiasPanel conectado={fuente === 'api'} />}
 
           {activeTab === 'resumen' && <ResumenDiario conectado={fuente === 'api'} />}
+          {activeTab === 'retenciones' && <RetencionesBajas conectado={fuente === 'api'} />}
 
           {activeTab === 'guias' && (
             <div className="space-y-4">

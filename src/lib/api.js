@@ -312,6 +312,52 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Retenciones (tipo 20).
+    async listRetenciones({ companyId, branchId } = {}) {
+      return listarPaginado('retentions', { companyId, branchId });
+    },
+
+    async crearRetencion(payload) {
+      const response = await request('/v1/retentions', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Comunicación de baja (anulación).
+    async listBajas({ companyId, branchId } = {}) {
+      return listarPaginado('voided-documents', { companyId, branchId });
+    },
+
+    async documentosAnulables({ companyId, branchId, fechaReferencia, tipoDocumento }) {
+      const params = new URLSearchParams({
+        company_id: String(companyId),
+        branch_id: String(branchId),
+        fecha_referencia: fechaReferencia,
+      });
+      if (tipoDocumento) params.append('tipo_documento', tipoDocumento);
+      const response = await request(`/v1/voided-documents/candidates?${params}`);
+      const json = await response.json();
+      return { items: normalizarLista(json), total: json?.total ?? 0 };
+    },
+
+    async crearBaja(payload) {
+      const response = await request('/v1/voided-documents', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async consultarEstadoBaja(id) {
+      const response = await request(`/v1/voided-documents/${id}/check-status`, { method: 'POST' });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     // Emisión masiva desde CSV/XLSX. Devuelve el resumen con emitidos y errores.
     async cargaMasiva({ companyId, branchId, file, enviarSunat = false }) {
       const form = new FormData();
