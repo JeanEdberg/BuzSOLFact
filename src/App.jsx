@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert,
 } from 'lucide-react';
 import { api, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
 import { buildLibroCorto } from './lib/libroCorto.js';
+import { guardarPropuesta } from './lib/repoPropuestas.js';
 import { mapVenta, mapCompra } from './lib/mapper.js';
 import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
@@ -21,6 +22,7 @@ import EmisionIndividual from './EmisionIndividual.jsx';
 import ResumenDiario from './ResumenDiario.jsx';
 import RetencionesBajas from './RetencionesBajas.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
+import ValidacionPanel from './ValidacionPanel.jsx';
 
 // El tipo de cambio se resuelve por fecha contra el backend (proxy de SUNAT).
 const tipoCambio = crearServicioTipoCambio({
@@ -39,6 +41,7 @@ const TABS = [
   { id: 'retenciones', label: 'Retenciones y Bajas', icon: Receipt },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
+  { id: 'validacion', label: 'Validación SSCO / SIRE', icon: ShieldAlert },
   { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
   { id: 'accesos-sol', label: 'Accesos SOL', icon: KeyRound },
   { id: 'conexion', label: 'Conexión API', icon: Plug },
@@ -257,7 +260,8 @@ function LibrosPanel({ ventas, compras, api, companyId, conectado }) {
   ];
 
   // Propuesta SIRE generada por el backend a partir de los comprobantes
-  // registrados (RVIE/RCE). Es la que se sube al portal del SIRE.
+  // registrados (RVIE/RCE). Es la que se sube al portal del SIRE. Además se
+  // archiva por periodo en el repositorio local para no volver a descargarla.
   async function descargarPropuestaSire(tipo) {
     if (!api || !conectado) {
       setMensaje('Conecta la API para generar la propuesta SIRE desde el servidor.');
@@ -266,8 +270,10 @@ function LibrosPanel({ ventas, compras, api, companyId, conectado }) {
     setDescargandoSire(tipo);
     setMensaje(null);
     try {
-      const nombre = await api.descargarPropuestaSire(companyId, periodo, tipo);
-      setMensaje(`Propuesta SIRE descargada: ${nombre}.`);
+      const { texto, filename } = await api.obtenerPropuestaSire(companyId, periodo, tipo);
+      downloadText(filename, texto);
+      guardarPropuesta({ companyId, libro: tipo, periodo, contenido: texto, origen: 'servidor', nombre: filename });
+      setMensaje(`Propuesta SIRE descargada y archivada (${periodo}): ${filename}.`);
     } catch (error) {
       setMensaje(`No se pudo generar la propuesta SIRE: ${error.message}`);
     } finally {
@@ -556,6 +562,14 @@ export default function App() {
       || (d.cliente ?? d.proveedor)?.razon_social?.toLowerCase().includes(q));
   };
 
+  // Abre un comprobante en su registro: cambia de pestaña y deja la búsqueda
+  // puesta en serie-número para que quede resaltado en la tabla.
+  function irAComprobante(ref) {
+    if (!ref) return;
+    setActiveTab(ref.libro === 'compras' ? 'compras' : 'facturas');
+    setBusqueda(`${ref.serie}-${ref.numero}`);
+  }
+
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
       <aside className="w-64 bg-slate-800 border-r border-slate-700 flex-col hidden md:flex">
@@ -605,17 +619,26 @@ export default function App() {
             <div className="space-y-4">
               <div className="flex flex-wrap justify-between items-center gap-3">
                 <h3 className="text-xl font-bold">Comprobantes de Compra Recibidos</h3>
-                <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${companyId ? 'bg-blue-600 hover:bg-blue-500 cursor-pointer' : 'bg-slate-700 opacity-50 cursor-not-allowed'}`}>
-                  {busy === 'importar-compra' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                  Importar XML
+                <div className="flex gap-2">
                   <input
-                    type="file"
-                    accept=".xml,application/xml,text/xml"
-                    className="hidden"
-                    disabled={!companyId}
-                    onChange={(e) => { handleImportarCompra(e.target.files?.[0]); e.target.value = ''; }}
+                    type="text"
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    placeholder="Buscar serie o proveedor..."
+                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
                   />
-                </label>
+                  <label className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium ${companyId ? 'bg-blue-600 hover:bg-blue-500 cursor-pointer' : 'bg-slate-700 opacity-50 cursor-not-allowed'}`}>
+                    {busy === 'importar-compra' ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                    Importar XML
+                    <input
+                      type="file"
+                      accept=".xml,application/xml,text/xml"
+                      className="hidden"
+                      disabled={!companyId}
+                      onChange={(e) => { handleImportarCompra(e.target.files?.[0]); e.target.value = ''; }}
+                    />
+                  </label>
+                </div>
               </div>
               <ComprobantesTable
                 documentos={filtrados(compras)}
@@ -629,7 +652,16 @@ export default function App() {
 
           {activeTab === 'facturas' && (
             <div className="space-y-4">
-              <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
+              <div className="flex flex-wrap justify-between items-center gap-3">
+                <h3 className="text-xl font-bold">Facturación & Boletas Emitidas</h3>
+                <input
+                  type="text"
+                  value={busqueda}
+                  onChange={(e) => setBusqueda(e.target.value)}
+                  placeholder="Buscar serie o cliente..."
+                  className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+                />
+              </div>
               <ComprobantesTable
                 documentos={filtrados(ventas)}
                 contraparte="Cliente"
@@ -696,6 +728,15 @@ export default function App() {
               api={api}
               companyId={companyId}
               conectado={fuente === 'api'}
+            />
+          )}
+          {activeTab === 'validacion' && (
+            <ValidacionPanel
+              ventas={ventas}
+              compras={compras}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+              irAComprobante={irAComprobante}
             />
           )}
           {activeTab === 'series' && <SeriesPanel conectado={fuente === 'api'} />}

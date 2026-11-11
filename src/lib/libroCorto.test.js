@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { columnRef, buildXlsx } from './xlsx.js';
 import {
-  LEYENDAS_AMAZONIA, leyendaAmazonia, verificacionSire, descripcion,
+  LEYENDAS_AMAZONIA, leyendaAmazonia, verificacionSire, descripcion, marcadorSsco,
   estadoLegible, hojaVentas, hojaCompras, buildLibroCorto,
 } from './libroCorto.js';
 
@@ -53,7 +53,7 @@ describe('libro corto', () => {
     const { rows } = hojaVentas([venta]);
     expect(rows[0]).toEqual([
       'Fecha', 'RUC', 'Cliente', 'Descripción', 'Base', 'IGV', 'Inafecto',
-      'Exonerado', 'ISC', 'Total', 'Estado', 'Verificación SIRE', 'Amazonía',
+      'Exonerado', 'ISC', 'Total', 'Estado', 'Verificación SIRE', 'Amazonía', 'SSCO',
     ]);
     const fila = rows[1];
     expect(fila[0]).toBe('10/11/2026');
@@ -63,6 +63,22 @@ describe('libro corto', () => {
     expect(fila[10]).toBe('Aceptado');
     expect(fila[11]).toBe('XML+CDR+PDF');
     expect(fila[12]).toBe(LEYENDAS_AMAZONIA['2001']);
+    expect(fila[13]).toBe('');
+  });
+
+  it('marca los comprobantes de proveedores SSCO', () => {
+    const compraSsco = {
+      fecha_emision: '2026-11-05',
+      proveedor: { num_doc: '10001276510', razon_social: 'TAPIA GONZALES MONICA FABIOLA' },
+      bi_gravada: 800, igv: 144, total: 944,
+      ssco: true,
+      ssco_detalle: { resolucion: 'Resolución de Intendencia N.º 024-024-0090639/SUNAT' },
+    };
+    expect(marcadorSsco(compraSsco)).toContain('SSCO');
+    expect(marcadorSsco(compraSsco)).toContain('024-024-0090639');
+    expect(marcadorSsco({ ssco: false })).toBe('');
+    const { rows } = hojaCompras([compraSsco]);
+    expect(rows[1][13]).toContain('SSCO');
   });
 
   it('usa "Proveedor" en compras y suma totales', () => {

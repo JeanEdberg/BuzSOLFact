@@ -414,15 +414,29 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     // Propuesta SIRE (RVIE/RCE) generada por el backend a partir de los
     // comprobantes emitidos/recibidos del periodo. libro: 'ventas' | 'compras'.
     async descargarPropuestaSire(companyId, periodo, libro = 'ventas') {
+      const { texto, filename } = await this.obtenerPropuestaSire(companyId, periodo, libro);
+      saveBlob(new Blob([texto], { type: 'text/plain;charset=windows-1252' }), filename);
+      return filename;
+    },
+
+    // Devuelve el TEXTO de la propuesta SIRE y su nombre de archivo, sin
+    // descargarlo. Se usa para archivar la propuesta por periodo.
+    async obtenerPropuestaSire(companyId, periodo, libro = 'ventas') {
       const params = new URLSearchParams({ periodo });
       if (companyId) params.set('company_id', String(companyId));
       const response = await request(`/v1/sire/${libro}?${params}`);
-      const blob = await response.blob();
       const disposition = response.headers.get('Content-Disposition') || '';
       const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
       const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `SIRE-${libro}-${periodo}.TXT`;
-      saveBlob(blob, filename);
-      return filename;
+      // El TXT del SIRE viene en latin-1; se decodifica explícitamente.
+      const buffer = await response.arrayBuffer();
+      let texto;
+      try {
+        texto = new TextDecoder('windows-1252').decode(buffer);
+      } catch {
+        texto = new TextDecoder('utf-8').decode(buffer);
+      }
+      return { texto, filename };
     },
 
     // Vista previa de la propuesta (JSON) para revisarla sin descargar.
@@ -598,6 +612,49 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `comprobante-${id}.${fallbackExt}`;
       saveBlob(blob, filename);
       return filename;
+    },
+
+    // ========================
+    // PADRÓN SSCO (SUJETO SIN CAPACIDAD OPERATIVA)
+    // ========================
+    // Cruce de un RUC/DNI contra la relación oficial de SUNAT que mantiene el
+    // backend. Los comprobantes de un SSCO no dan crédito fiscal ni gasto.
+    async consultarSsco(ruc) {
+      const response = await request(`/v1/padrones/ssco/${encodeURIComponent(ruc)}`);
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Consulta en lote: devuelve { consultados, ssco: { ruc: detalle } }.
+    async consultarSscoLote(rucs) {
+      const response = await request('/v1/padrones/ssco/lote', {
+        method: 'POST',
+        body: JSON.stringify({ rucs }),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async estadoPadronSsco() {
+      const response = await request('/v1/padrones/ssco/estado');
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Descarga el padrón oficial de SUNAT y refresca la caché del backend.
+    async refrescarPadronSsco() {
+      const response = await request('/v1/padrones/ssco/refrescar', { method: 'POST' });
+      const json = await response.json();
+      return json;
+    },
+
+    // Carga manual del .xlsx del padrón (respaldo si SUNAT no responde).
+    async subirPadronSsco(file) {
+      const form = new FormData();
+      form.append('archivo', file);
+      const response = await request('/v1/padrones/ssco/subir', { method: 'POST', body: form });
+      const json = await response.json();
+      return json;
     },
   };
 }

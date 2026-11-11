@@ -3,11 +3,13 @@
 // Es un resumen exportable para el cliente, distinto de los formatos oficiales
 // PLE/SIRE. Columnas por registro:
 //   Fecha | RUC | Cliente/Proveedor | Descripción | Base | IGV | Inafecto |
-//   Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía
+//   Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía | SSCO
 //
 // "Verificación SIRE" resume qué artefactos existen del comprobante (XML, CDR,
 // PDF). "Amazonía" señala si el comprobante lleva la leyenda de exoneración del
-// IGV por la Ley de la Amazonía (catálogo n.º 52: 2001/2002/2003).
+// IGV por la Ley de la Amazonía (catálogo n.º 52: 2001/2002/2003). "SSCO" marca
+// al proveedor/cliente que figura en el padrón de Sujetos Sin Capacidad
+// Operativa: sus comprobantes no dan crédito fiscal ni sustentan gasto.
 
 import { buildXlsx } from './xlsx.js';
 import { formatDate, money } from './ple.js';
@@ -27,6 +29,14 @@ export function leyendaAmazonia(leyendas) {
     .filter((c) => LEYENDAS_AMAZONIA[c]);
   if (!codes.length) return '';
   return codes.map((c) => LEYENDAS_AMAZONIA[c]).join(' / ');
+}
+
+// Texto para la columna "SSCO": la resolución de atribución si el comprobante
+// proviene de un Sujeto Sin Capacidad Operativa; vacío en caso contrario.
+export function marcadorSsco(row) {
+  if (!row?.ssco) return '';
+  const detalle = row.ssco_detalle ?? {};
+  return detalle.resolucion ? `SSCO · ${detalle.resolucion}` : 'SSCO (sin crédito fiscal ni gasto)';
 }
 
 // Resume la disponibilidad de artefactos: 'XML+CDR+PDF', 'XML', '—', etc.
@@ -85,6 +95,7 @@ function filaVenta(r) {
     estadoLegible(r.estado_sunat),
     verificacionSire(r),
     leyendaAmazonia(r.leyendas),
+    marcadorSsco(r),
   ];
 }
 
@@ -103,6 +114,7 @@ function filaCompra(r) {
     estadoLegible(r.estado_sunat),
     verificacionSire(r),
     leyendaAmazonia(r.leyendas),
+    marcadorSsco(r),
   ];
 }
 
@@ -114,13 +126,13 @@ function filaTotales(rows, fila) {
   return [
     'TOTAL', '', `${rows.length} comprobante(s)`, '',
     suma(4), suma(5), suma(6), suma(7), suma(8), suma(9),
-    '', '', '',
+    '', '', '', '',
   ];
 }
 
 const CABECERA = [
   'Fecha', 'RUC', 'Cliente', 'Descripción', 'Base', 'IGV', 'Inafecto',
-  'Exonerado', 'ISC', 'Total', 'Estado', 'Verificación SIRE', 'Amazonía',
+  'Exonerado', 'ISC', 'Total', 'Estado', 'Verificación SIRE', 'Amazonía', 'SSCO',
 ];
 
 const CABECERA_COMPRAS = ['Fecha', 'RUC', 'Proveedor', ...CABECERA.slice(3)];
