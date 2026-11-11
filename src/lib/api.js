@@ -100,6 +100,48 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Buzón electrónico SUNAT / SUNAFIL. La API envuelve el listado en un
+    // paginador de Laravel: { data: { data: [...], current_page, total } }.
+    async listNotificaciones({ companyId, entidad, estado } = {}) {
+      const params = new URLSearchParams();
+      if (companyId) params.set('company_id', String(companyId));
+      if (entidad) params.set('entidad', entidad);
+      if (estado) params.set('estado', estado);
+      const qs = params.toString();
+      const response = await request(`/v1/notificaciones${qs ? `?${qs}` : ''}`);
+      const json = await response.json();
+      const paginador = json?.data ?? {};
+      return {
+        items: paginador.data ?? [],
+        total: paginador.total ?? (paginador.data?.length ?? 0),
+        resumen: json?.resumen ?? { pendientes: 0, total: 0 },
+      };
+    },
+
+    async crearNotificacion(payload) {
+      const response = await request('/v1/notificaciones', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async marcarNotificacionLeida(id) {
+      const response = await request(`/v1/notificaciones/${id}/marcar-leida`, { method: 'POST' });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async sincronizarBuzon(companyId) {
+      const response = await request('/v1/notificaciones/sincronizar', {
+        method: 'POST',
+        body: JSON.stringify({ company_id: companyId }),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     // La PWA no puede leer tipoCambio.txt de SUNAT directamente (CORS). El backend
     // actúa de proxy con caché por fecha y responde { fecha, compra, venta }; si
     // devuelve el TXT crudo también se acepta.

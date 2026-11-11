@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2, RefreshCw,
+  Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
   Download, AlertCircle, BookOpen, Plug, Loader2, KeyRound,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
@@ -10,9 +10,10 @@ import { buildLibroCorto } from './lib/libroCorto.js';
 import { mapVenta } from './lib/mapper.js';
 import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
-  empresa, notificaciones, comprobantesVenta, comprobantesCompra,
+  empresa, comprobantesVenta, comprobantesCompra,
 } from './lib/sampleData.js';
 import AccesosSol from './AccesosSol.jsx';
+import BuzonPanel from './BuzonPanel.jsx';
 
 const api = createApi();
 
@@ -422,30 +423,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'buzon' && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-xl font-bold">Notificaciones Electrónicas en Tiempo Real</h3>
-                <button className="flex items-center gap-2 bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500">
-                  <RefreshCw size={16} /> Sincronizar Buzones
-                </button>
-              </div>
-              <div className="grid gap-3">
-                {notificaciones.map((n) => (
-                  <div key={n.id} className="bg-slate-800 p-4 rounded-xl border border-slate-700 flex justify-between items-center">
-                    <div>
-                      <span className={`text-xs px-2 py-0.5 rounded font-semibold ${n.entidad === 'SUNAT' ? 'bg-amber-500/20 text-amber-400' : 'bg-purple-500/20 text-purple-400'}`}>
-                        {n.entidad}
-                      </span>
-                      <h4 className="font-medium mt-1">{n.titulo}</h4>
-                      <p className="text-xs text-slate-400">Fecha: {n.fecha} · {n.tipo}</p>
-                    </div>
-                    <button className="text-blue-400 hover:underline text-sm">Ver Detalle</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {activeTab === 'buzon' && <BuzonPanel conectado={fuente === 'api'} />}
 
           {activeTab === 'compras' && (
             <div className="space-y-4">

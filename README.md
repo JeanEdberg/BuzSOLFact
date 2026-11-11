@@ -21,7 +21,7 @@ npm test         # pruebas de los generadores PLE
 
 | Módulo | Descripción |
 |---|---|
-| Buzón SUNAT / SUNAFIL | Notificaciones electrónicas unificadas. |
+| Buzón SUNAT / SUNAFIL | Notificaciones electrónicas **por empresa**, con sincronización y alta manual. |
 | Registro de Compras | Comprobantes recibidos con descarga XML/PDF/CDR. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
@@ -137,6 +137,21 @@ Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía
 El `.xlsx` se genera en el navegador sin dependencias (`src/lib/xlsx.js`, un
 escritor ZIP + OOXML mínimo) y lo consume `src/lib/libroCorto.js`.
 
+## Buzón electrónico (SUNAT / SUNAFIL)
+
+Con la API conectada, la pestaña **Buzón SUNAT / SUNAFIL** muestra las
+notificaciones reales de la empresa seleccionada, permite filtrar por entidad,
+marcarlas como leídas, registrarlas manualmente y **sincronizar** el buzón.
+
+Cada notificación pertenece a una empresa y se deduplica por
+`(empresa, entidad, código)`. El backend (`/api/v1/notificaciones`) usa un
+adaptador configurable: si se define `SUNAT_BUZON_ENDPOINT` o
+`SUNAFIL_BUZON_ENDPOINT`, sincroniza desde ese endpoint; si no, el alta manual
+sigue disponible. SUNAT y SUNAFIL no publican una API REST pública del buzón,
+por lo que sin endpoint la sincronización no trae novedades (no es un error).
+
+Sin API conectada, la pestaña muestra datos de demostración.
+
 ## Accesos SOL (multiempresa)
 
 La pestaña **Accesos SOL** permite configurar, para cada empresa, sus credenciales
@@ -159,6 +174,7 @@ public/            manifest.json, sw.js
 src/
   App.jsx          interfaz (pestañas, descargas, panel de libros)
   AccesosSol.jsx   gestión multiempresa de credenciales SOL y certificado
+  BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind
   lib/
