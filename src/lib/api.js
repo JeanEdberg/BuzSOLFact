@@ -143,6 +143,163 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Descarga XML/CDR/PDF de un comprobante de compra (los que el proveedor
+    // envió, o los que el usuario adjuntó a mano cuando solo tenía el PDF).
+    async descargarCompra(id, format) {
+      const response = await request(`/v1/compras/${id}/download-${format}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+      const fallbackExt = format === 'pdf' ? 'pdf' : format === 'cdr' ? 'zip' : 'xml';
+      const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `compra-${id}.${fallbackExt}`;
+      saveBlob(blob, filename);
+      return filename;
+    },
+
+    // Adjunta un artefacto a una compra (multipart: tipo=xml|cdr|pdf + archivo).
+    async adjuntarCompra(id, tipo, file) {
+      const form = new FormData();
+      form.append('tipo', tipo);
+      form.append('archivo', file);
+      const response = await request(`/v1/compras/${id}/adjuntos`, { method: 'POST', body: form });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Envía a SUNAT un comprobante ya emitido. tipo: 'invoices'|'boletas'|
+    // 'credit-notes'|'debit-notes'|'dispatch-guides'.
+    async enviarSunat(recurso, id) {
+      const response = await request(`/v1/${recurso}/${id}/send-sunat`, { method: 'POST' });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async crearNotaCredito(payload) {
+      const response = await request('/v1/credit-notes', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async crearNotaDebito(payload) {
+      const response = await request('/v1/debit-notes', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async crearGuia(payload) {
+      const response = await request('/v1/dispatch-guides', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Emisión masiva desde CSV/XLSX. Devuelve el resumen con emitidos y errores.
+    async cargaMasiva({ companyId, branchId, file, enviarSunat = false }) {
+      const form = new FormData();
+      form.append('company_id', String(companyId));
+      if (branchId) form.append('branch_id', String(branchId));
+      form.append('archivo', file);
+      if (enviarSunat) form.append('enviar_sunat', '1');
+      const response = await request('/v1/bulk/documentos', { method: 'POST', body: form });
+      const json = await response.json();
+      return { resumen: json?.data ?? json, message: json?.message };
+    },
+
+    // Descarga la plantilla CSV de carga masiva.
+    async descargarPlantillaCarga() {
+      const response = await request('/v1/bulk/plantilla');
+      const blob = await response.blob();
+      saveBlob(blob, 'plantilla-carga-masiva.csv');
+    },
+
+    // Propuesta SIRE (RVIE/RCE) generada por el backend a partir de los
+    // comprobantes emitidos/recibidos del periodo. libro: 'ventas' | 'compras'.
+    async descargarPropuestaSire(companyId, periodo, libro = 'ventas') {
+      const params = new URLSearchParams({ periodo });
+      if (companyId) params.set('company_id', String(companyId));
+      const response = await request(`/v1/sire/${libro}?${params}`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+      const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `SIRE-${libro}-${periodo}.TXT`;
+      saveBlob(blob, filename);
+      return filename;
+    },
+
+    // Vista previa de la propuesta (JSON) para revisarla sin descargar.
+    async previsualizarPropuestaSire(companyId, periodo, libro = 'ventas') {
+      const params = new URLSearchParams({ periodo, preview: '1' });
+      if (companyId) params.set('company_id', String(companyId));
+      const response = await request(`/v1/sire/${libro}?${params}`);
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // ========================
+    // SERIES / CORRELATIVOS POR SUCURSAL
+    // ========================
+    // Sucursales de la empresa (para elegir dónde administrar las series).
+    async listBranches(companyId) {
+      const params = new URLSearchParams();
+      if (companyId) params.set('company_id', String(companyId));
+      const response = await request(`/v1/branches?${params}`);
+      const json = await response.json();
+      return json?.data ?? [];
+    },
+
+    // Tipos de documento SUNAT que admiten serie.
+    async tiposDocumentoSerie() {
+      const response = await request('/v1/correlatives/document-types');
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Series configuradas en una sucursal.
+    async listCorrelatives(branchId) {
+      const response = await request(`/v1/branches/${branchId}/correlatives`);
+      const json = await response.json();
+      return json?.data?.correlatives ?? [];
+    },
+
+    async crearCorrelative(branchId, { tipoDocumento, serie, correlativoInicial = 0 }) {
+      const response = await request(`/v1/branches/${branchId}/correlatives`, {
+        method: 'POST',
+        body: JSON.stringify({
+          tipo_documento: tipoDocumento,
+          serie,
+          correlativo_inicial: correlativoInicial,
+        }),
+      });
+      return response.json();
+    },
+
+    async actualizarCorrelative(branchId, id, { tipoDocumento, serie, correlativoActual }) {
+      const response = await request(`/v1/branches/${branchId}/correlatives/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          tipo_documento: tipoDocumento,
+          serie,
+          correlativo_actual: correlativoActual,
+        }),
+      });
+      return response.json();
+    },
+
+    async eliminarCorrelative(branchId, id) {
+      const response = await request(`/v1/branches/${branchId}/correlatives/${id}`, {
+        method: 'DELETE',
+      });
+      return response.json();
+    },
+
     // Buzón electrónico SUNAT / SUNAFIL. La API envuelve el listado en un
     // paginador de Laravel: { data: { data: [...], current_page, total } }.
     async listNotificaciones({ companyId, entidad, estado } = {}) {

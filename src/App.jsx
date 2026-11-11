@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
@@ -14,6 +14,8 @@ import {
 } from './lib/sampleData.js';
 import AccesosSol from './AccesosSol.jsx';
 import BuzonPanel from './BuzonPanel.jsx';
+import CargaMasiva from './CargaMasiva.jsx';
+import SeriesPanel from './SeriesPanel.jsx';
 
 const api = createApi();
 
@@ -26,8 +28,10 @@ const TABS = [
   { id: 'buzon', label: 'Buzón SUNAT / SUNAFIL', icon: Bell },
   { id: 'compras', label: 'Registro de Compras', icon: ShoppingCart },
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
+  { id: 'masiva', label: 'Carga Masiva', icon: Upload },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
+  { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
   { id: 'accesos-sol', label: 'Accesos SOL', icon: KeyRound },
   { id: 'conexion', label: 'Conexión API', icon: Plug },
 ];
@@ -58,6 +62,23 @@ function DownloadButtons({ documento, onDownload, busy }) {
   );
 }
 
+// El backend solo permite reenviar a SUNAT lo que aún no está aceptado.
+function EnviarSunatButton({ documento, onEnviar, busy }) {
+  const aceptado = documento.estado_sunat === 'ACEPTADO';
+  if (aceptado) return <span className="text-xs text-slate-500">—</span>;
+  return (
+    <button
+      onClick={() => onEnviar(documento)}
+      disabled={busy === `enviar-${documento.id}`}
+      title="Enviar a SUNAT"
+      className="flex items-center gap-1 px-2 py-1 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 rounded text-xs"
+    >
+      {busy === `enviar-${documento.id}` ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+      Enviar
+    </button>
+  );
+}
+
 function EstadoBadge({ estado }) {
   const map = {
     ACEPTADO: 'bg-emerald-500/20 text-emerald-400',
@@ -74,7 +95,7 @@ function EstadoBadge({ estado }) {
   );
 }
 
-function ComprobantesTable({ documentos, contraparte, onDownload, busy }) {
+function ComprobantesTable({ documentos, contraparte, onDownload, onEnviar, onAdjuntar, busy }) {
   if (!documentos.length) {
     return (
       <div className="bg-slate-800 rounded-xl border border-slate-700 p-8 text-center text-sm text-slate-400">
@@ -93,6 +114,8 @@ function ComprobantesTable({ documentos, contraparte, onDownload, busy }) {
             <th className="p-4">Total</th>
             <th className="p-4">Estado SUNAT</th>
             <th className="p-4 text-center">Descargas (XML / PDF / CDR)</th>
+            {onEnviar && <th className="p-4 text-center">Enviar a SUNAT</th>}
+            {onAdjuntar && <th className="p-4 text-center">Adjuntar</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-700 text-sm">
@@ -104,10 +127,49 @@ function ComprobantesTable({ documentos, contraparte, onDownload, busy }) {
               <td className="p-4">{money(d.total)}</td>
               <td className="p-4"><EstadoBadge estado={d.estado_sunat} /></td>
               <td className="p-4"><DownloadButtons documento={d} onDownload={onDownload} busy={busy} /></td>
+              {onEnviar && (
+                <td className="p-4 text-center">
+                  <EnviarSunatButton documento={d} onEnviar={onEnviar} busy={busy} />
+                </td>
+              )}
+              {onAdjuntar && (
+                <td className="p-4 text-center">
+                  <AdjuntarCompra documento={d} onAdjuntar={onAdjuntar} busy={busy} />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// El proveedor a veces solo manda el PDF: aquí se puede adjuntar el artefacto
+// que falte (XML, CDR o PDF) a una compra.
+function AdjuntarCompra({ documento, onAdjuntar, busy }) {
+  const [tipo, setTipo] = useState('pdf');
+  const ocupado = busy === `adjuntar-${documento.id}`;
+  return (
+    <div className="flex items-center justify-center gap-1">
+      <select
+        value={tipo}
+        onChange={(e) => setTipo(e.target.value)}
+        className="bg-slate-900 border border-slate-700 rounded px-1 py-1 text-xs text-slate-200"
+      >
+        <option value="pdf">PDF</option>
+        <option value="xml">XML</option>
+        <option value="cdr">CDR</option>
+      </select>
+      <label className="p-1 bg-slate-700 hover:bg-slate-600 rounded cursor-pointer" title="Adjuntar archivo">
+        {ocupado ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        <input
+          type="file"
+          className="hidden"
+          disabled={ocupado}
+          onChange={(e) => { onAdjuntar(documento, tipo, e.target.files?.[0]); e.target.value = ''; }}
+        />
+      </label>
     </div>
   );
 }
@@ -127,10 +189,11 @@ const FORMATOS = {
   },
 };
 
-function LibrosPanel({ ventas, compras }) {
+function LibrosPanel({ ventas, compras, api, companyId, conectado }) {
   const [periodo, setPeriodo] = useState('2026-11');
   const [mensaje, setMensaje] = useState(null);
   const [generando, setGenerando] = useState(false);
+  const [descargandoSire, setDescargandoSire] = useState(null);
 
   // El periodo del selector es 'YYYY-MM'; las fechas vienen como 'YYYY-MM-DD'.
   const filtrar = (rows) => rows.filter((r) => (r.fecha_emision ?? '').startsWith(periodo));
@@ -184,6 +247,25 @@ function LibrosPanel({ ventas, compras }) {
     { tipo: 'ventas', titulo: 'Registro de Ventas e Ingresos', resumen: resumenVentas },
     { tipo: 'compras', titulo: 'Registro de Compras', resumen: resumenCompras },
   ];
+
+  // Propuesta SIRE generada por el backend a partir de los comprobantes
+  // registrados (RVIE/RCE). Es la que se sube al portal del SIRE.
+  async function descargarPropuestaSire(tipo) {
+    if (!api || !conectado) {
+      setMensaje('Conecta la API para generar la propuesta SIRE desde el servidor.');
+      return;
+    }
+    setDescargandoSire(tipo);
+    setMensaje(null);
+    try {
+      const nombre = await api.descargarPropuestaSire(companyId, periodo, tipo);
+      setMensaje(`Propuesta SIRE descargada: ${nombre}.`);
+    } catch (error) {
+      setMensaje(`No se pudo generar la propuesta SIRE: ${error.message}`);
+    } finally {
+      setDescargandoSire(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -257,6 +339,15 @@ function LibrosPanel({ ventas, compras }) {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => descargarPropuestaSire(c.tipo)}
+              disabled={descargandoSire !== null}
+              title="Propuesta SIRE generada por el backend (la que se sube al portal)"
+              className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {descargandoSire === c.tipo ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Propuesta SIRE (servidor)
+            </button>
           </div>
         ))}
       </div>
@@ -399,10 +490,46 @@ export default function App() {
     setBusy(`${documento.id}-${format}`);
     setAviso(null);
     try {
-      await api.download(documento.tipo_documento, documento.id, format);
+      // Las compras tienen su propio recurso de descarga.
+      if (documento.origen === 'compra') {
+        await api.descargarCompra(documento.id, format);
+      } else {
+        await api.download(documento.tipo_documento, documento.id, format);
+      }
       setAviso(`Descarga ${format.toUpperCase()} iniciada para ${documento.serie}-${documento.numero}.`);
     } catch (error) {
       setAviso(`No se pudo descargar ${format.toUpperCase()}: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleAdjuntar(documento, tipo, file) {
+    if (!file) return;
+    setBusy(`adjuntar-${documento.id}`);
+    setAviso(null);
+    try {
+      await api.adjuntarCompra(documento.id, tipo, file);
+      await recargarCompras();
+      setAviso(`Se adjuntó el ${tipo.toUpperCase()} a la compra ${documento.serie}-${documento.numero}.`);
+    } catch (error) {
+      setAviso(`No se pudo adjuntar el ${tipo.toUpperCase()}: ${error.message}`);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleEnviar(documento) {
+    setBusy(`enviar-${documento.id}`);
+    setAviso(null);
+    try {
+      const recurso = String(documento.tipo_documento).startsWith('03') ? 'boletas' : 'invoices';
+      await api.enviarSunat(recurso, documento.id);
+      const emitidos = await api.listVentas();
+      setVentas(emitidos.map((d) => mapVenta(d)));
+      setAviso(`Comprobante ${documento.serie}-${documento.numero} enviado a SUNAT.`);
+    } catch (error) {
+      setAviso(`No se pudo enviar a SUNAT: ${error.message}`);
     } finally {
       setBusy(null);
     }
@@ -481,6 +608,7 @@ export default function App() {
                 documentos={filtrados(compras)}
                 contraparte="Proveedor"
                 onDownload={handleDownload}
+                onAdjuntar={handleAdjuntar}
                 busy={busy}
               />
             </div>
@@ -493,9 +621,14 @@ export default function App() {
                 documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
+                onEnviar={handleEnviar}
                 busy={busy}
               />
             </div>
+          )}
+
+          {activeTab === 'masiva' && (
+            <CargaMasiva api={api} companyId={companyId} conectado={fuente === 'api'} />
           )}
 
           {activeTab === 'guias' && (
@@ -519,12 +652,22 @@ export default function App() {
                 documentos={filtrados(ventas)}
                 contraparte="Cliente"
                 onDownload={handleDownload}
+                onEnviar={handleEnviar}
                 busy={busy}
               />
             </div>
           )}
 
-          {activeTab === 'libros' && <LibrosPanel ventas={ventas} compras={compras} />}
+          {activeTab === 'libros' && (
+            <LibrosPanel
+              ventas={ventas}
+              compras={compras}
+              api={api}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+            />
+          )}
+          {activeTab === 'series' && <SeriesPanel conectado={fuente === 'api'} />}
           {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
 
           {activeTab === 'conexion' && (

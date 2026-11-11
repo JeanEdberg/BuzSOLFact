@@ -84,6 +84,25 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   El parser UBL acumula base e impuesto por código de tributo (`TaxSubtotal`),
   no desde `LegalMonetaryTotal`.
 - `tipo-cambio`: `GET /tipo-cambio?fecha=AAAA-MM-DD`.
+- `bulk` (carga masiva): `POST /bulk/documentos` (multipart `company_id`,
+  `branch_id?`, `archivo` CSV/XLSX, `enviar_sunat?`), `GET /bulk/plantilla`
+  (CSV de ejemplo). Cada fila es un ítem; las filas con el mismo `grupo` se
+  consolidan en un comprobante con varias líneas. La extensión original del
+  archivo se pasa a `SpreadsheetReader` (no confiar en el temporal sin extensión).
+- `sire` (propuesta): `GET /sire/ventas|compras?company_id=&periodo=AAAA-MM`
+  descarga el TXT oficial (`LE…021112.TXT`); con `?preview=1` devuelve
+  `{filename, registros, contenido}` en JSON. RVIE = 33 campos; RCE = 41 campos
+  (38-41 vacíos). El tipo de cambio de ventas en moneda extranjera se resuelve
+  con `TipoCambioService` por fecha.
+- `compras`: además del CRUD, `GET /compras/{id}/download-{xml,cdr,pdf}` y
+  `POST /compras/{id}/adjuntos` (PDF manual). El modelo `Compra` guarda
+  `xml_path`/`cdr_path`/`pdf_path`.
+- `correlatives` (series): `GET /branches/{branch}/correlatives`,
+  `POST /branches/{branch}/correlatives`, `PUT|DELETE …/{correlative}`,
+  `POST /branches/{branch}/correlatives/batch`,
+  `POST …/{correlative}/increment`, `GET /correlatives/document-types`.
+  `Correlative::getNumeroCompletoAttribute` = `serie-correlativo(6)`. El
+  correlativo que se persiste es el **último usado**.
 
 Reglas del backend que conviene no romper:
 

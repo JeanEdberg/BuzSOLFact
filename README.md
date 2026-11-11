@@ -25,7 +25,8 @@ npm test         # pruebas de los generadores PLE
 | Registro de Compras | Comprobantes recibidos **por empresa**: alta manual o importando el XML UBL del proveedor. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
-| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, más un Excel corto (ventas y compras). |
+| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, la propuesta SIRE del servidor y un Excel corto (ventas y compras). |
+| Series por sucursal | Configura las series (F001, B001…) y el correlativo de cada tipo de documento por sucursal. |
 | Accesos SOL | Credenciales SOL (SUNAT) y certificado digital **por empresa**, ambiente y leyenda de Amazonía. |
 
 ## Descarga de comprobantes
@@ -140,6 +141,21 @@ PLE:  LE + RUC(11) + AAAAMM + 00 + libro(6) + 001111 + .TXT
 SIRE: LE + RUC(11) + AAAAMM + 00 + libro(6) + 021112 + .TXT   (02 = reemplaza la propuesta)
 ```
 
+La PWA genera estos archivos en el navegador, pero el backend también puede
+generar la **propuesta del SIRE** a partir de los comprobantes registrados en la
+base de datos (útil para emitir el entregable oficial sin depender de los datos
+de la pantalla):
+
+```
+GET {VITE_API_URL}/v1/sire/ventas?company_id=&periodo=AAAA-MM   -> TXT (descarga)
+GET {VITE_API_URL}/v1/sire/compras?company_id=&periodo=AAAA-MM  -> TXT (descarga)
+GET {VITE_API_URL}/v1/sire/ventas?company_id=&periodo=&preview=1 -> JSON {filename, registros, contenido}
+```
+
+En la pestaña **Libros Electrónicos**, el botón **Propuesta SIRE (servidor)**
+descarga ese archivo con el nombre oficial; con `preview=1` se puede revisar el
+contenido en JSON antes de subirlo al portal.
+
 ### Libro corto (Excel)
 
 Además de los formatos oficiales, el botón **Excel** descarga
@@ -175,6 +191,25 @@ por lo que sin endpoint la sincronización no trae novedades (no es un error).
 
 Sin API conectada, la pestaña muestra datos de demostración.
 
+## Series por sucursal
+
+La pestaña **Series por sucursal** administra, por empresa y sucursal, las series
+y correlativos de cada tipo de documento SUNAT (factura, boleta, notas, guías…).
+El correlativo que se muestra es el **último usado**: el próximo comprobante
+continúa en `+1`. El backend ya expone el CRUD:
+
+```
+GET    {VITE_API_URL}/v1/branches?company_id=            -> sucursales
+GET    {VITE_API_URL}/v1/correlatives/document-types     -> tipos de documento
+GET    {VITE_API_URL}/v1/branches/{branch}/correlatives
+POST   {VITE_API_URL}/v1/branches/{branch}/correlatives  (tipo_documento, serie, correlativo_inicial)
+PUT    {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
+DELETE {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
+```
+
+Cada sucursal lleva su propio numerador, de modo que dos locales pueden emitir
+facturas con series distintas sin chocar entre sí.
+
 ## Accesos SOL (multiempresa)
 
 La pestaña **Accesos SOL** permite configurar, para cada empresa, sus credenciales
@@ -198,6 +233,8 @@ src/
   App.jsx          interfaz (pestañas, descargas, panel de libros)
   AccesosSol.jsx   gestión multiempresa de credenciales SOL y certificado
   BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
+  CargaMasiva.jsx  emisión masiva de comprobantes (plantilla CSV/XLSX)
+  SeriesPanel.jsx  series y correlativos por sucursal
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind
   lib/

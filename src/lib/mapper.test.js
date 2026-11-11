@@ -111,5 +111,6 @@ describe('mapper de la API', () => {
     expect(fila.igv).toBe('144.00');
     expect(fila.total).toBe('944.00');
     expect(fila.tipo_cambio).toBe('3.750');
+    expect(fila.origen).toBe('compra'); // elige el recurso /compras/... en las descargas
   });
 });

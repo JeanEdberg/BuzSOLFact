@@ -96,6 +96,7 @@ export function mapVenta(doc, { tipoCambio } = {}) {
 export function mapCompra(doc, { tipoCambio } = {}) {
   return {
     id: doc.id,
+    origen: 'compra',
     tipo_documento: doc.tipo_documento,
     serie: doc.serie,
     numero: padCorrelativo(doc.correlativo ?? doc.numero),
