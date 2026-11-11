@@ -171,10 +171,10 @@ Backend (`/tmp/api-sunat`):
 - Tests: `tests/Feature/SscoPadronTest.php` y `tests/Feature/SirePropuestaTest.php`
   (Pest, `RefreshDatabase`, `actingAs(User::factory())`).
 
-Pendiente conocido: **`/v1/compras` no existe en el backend** (404). El registro
-de compras del libro no se puede cargar desde la API todavía; la integración de
-compras PWA↔API sigue abierta. El cruce SSCO de compras solo opera con datos
-cargados localmente.
+Integración de compras PWA↔API: **cerrada**. El backend expone `/v1/compras`
+(listado, alta manual, importación del XML UBL del proveedor, descarga y
+adjuntos); el registro de compras del libro ya se carga desde la API. El cruce
+SSCO de compras opera tanto con datos de la API como locales.
 
 ## Backend (Laravel 12 + Greenter) — contrato relevante
 
