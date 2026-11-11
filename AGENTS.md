@@ -21,6 +21,10 @@ npm run build
 npm test         # vitest (src/lib/*.test.js)
 ```
 
+Los iconos de la PWA se generan con `python3 scripts/generate-icons.py` (requiere
+Pillow) hacia `public/icons/`; no se editan a mano. Si cambia el `theme-color`,
+volver a generarlos.
+
 ## Convenciones
 
 - El cliente de la API (`src/lib/api.js`) asume el contrato real del backend:
