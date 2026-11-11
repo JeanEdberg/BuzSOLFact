@@ -92,6 +92,90 @@ Reglas que no romper:
   catálogos del backend para los motivos y la modalidad de traslado, y usa
   `descargarDocumento(recurso, id, format)`.
 
+## Tasa especial del IGV (Ley 31556)
+
+`src/lib/igvEspecial.js` modela la tasa especial y temporal del IGV para MYPE de
+restaurantes, hoteles y alojamientos turísticos. El porcentaje que viaja en cada
+línea gravada (`porcentaje_igv`, `<cbc:Percent>`) es la **tasa total IGV + IPM**,
+igual que el 18 % del régimen general (16 % IGV + 2 % IPM).
+
+- **Ley 31556** (12/08/2022): IGV especial del 8 %, vigente del 01/09/2022 al
+  31/12/2024 (art. 4 original).
+- **Ley 32219** (29/12/2024): prorroga el 8 % para 2025 y 2026 y fija el 12 %
+  para 2027 (modifica los arts. 1, 3 y 4 de la Ley 31556).
+- **Ley 32387** (16/06/2025): sube el IPM del 2 % al 4 % (+0,5 % anual desde
+  2026) sin tocar el 8 % del IGV especial. Modificó además el art. 17 del TUO del
+  IGV (14 %) y el art. 76 de la Ley de Tributación Municipal (IPM 4 %), pero su
+  aplicación cuantitativa es progresiva; por eso `TASA_GENERAL` se mantiene en
+  18 % y no se altera el régimen común.
+
+Totales del régimen especial: 10 % (2022-2025), 10,5 % (2026), 15 % (2027). En
+`EmisionIndividual.jsx` hay una casilla "Régimen especial… (Ley 31556)" que solo
+se habilita cuando el año de emisión está entre 2025 y 2027; aplica la tasa a los
+ítems gravados y a la base de la detracción. Requisitos de fondo que la UI
+recuerda: MYPE con ventas anuales ≤ 1700 UIT y ≥ 70 % de ingresos del rubro.
+
+## Validación SSCO / SIRE
+
+Módulo de control tributario: marca las contrapartes que SUNAT publica como
+**Sujetos Sin Capacidad Operativa (SSCO)** y cruza el libro contra la propuesta
+**SIRE**. Los comprobantes de un SSCO **no dan crédito fiscal ni sustentan gasto**
+(Decreto Legislativo N.º 1532).
+
+Frontend:
+
+- `src/lib/xlsxRead.js` — `readXlsx(ArrayBuffer)` → `[{name, rows}]`. Lee OOXML
+  (ZIP store + deflate) **sin dependencias externas**; soporta celdas en línea y
+  compartidas. Sirve para el padrón `.xlsx` de SUNAT (Hoja1 con cabecera).
+- `src/lib/ssco.js` — `parseSscoPadron`, `buildSscoIndex`, `consultarSsco`,
+  `marcarSsco(filas, index, 'proveedor'|'cliente')`, `resumenSsco`,
+  `excelSerialToDate` (convierte el serial de fecha de Excel a ISO).
+- `src/lib/cruceSire.js` — `parsePropuestaSire(texto, 'ventas'|'compras')` y
+  `cruzarConPropuesta(filas, propuesta, tipo)`: devuelve coincidencias,
+  `soloPropuesta` (en SIRE y no en el libro), `soloPropio`, `diferencias` de
+  importes y los `ssco` detectados.
+- `src/lib/repoPropuestas.js` — repositorio local (localStorage) de propuestas
+  SIRE por **periodo** y libro; re-descargar reemplaza la anterior, sin
+  duplicados.
+- `src/lib/validacionPeriodo.js` — `validarPeriodo({propios, propuesta, libro,
+  padronIndex, periodo})`: cruce del **periodo elegido (mes/año)** contra la
+  propuesta SIRE y el padrón; devuelve el reporte con IGV/importe afectado y las
+  referencias directas a cada comprobante (`sscoPropios`).
+- `src/ValidacionPanel.jsx` — pestaña "Validación SSCO / SIRE": pide el
+  **periodo (mes/año)** y el libro, descarga la propuesta del backend (o usa la
+  archivada), cruza contra el padrón y muestra el reporte con enlace **Ver** al
+  comprobante. También permite subir un `.TXT` de propuesta y administrar el
+  padrón (`api.consultarSscoLote`, `.xlsx` manual, actualizar desde SUNAT).
+- `src/lib/libroCorto.js` — columna "SSCO" vía `marcadorSsco`.
+
+Backend (`/tmp/api-sunat`):
+
+- `SscoPadron` + migración `create_ssco_padron_table`; `XlsxReader` (ZipArchive +
+  SimpleXML) y `SscoService`; `SscoController` bajo `api/v1/padrones/ssco`:
+  `GET /{ruc}`, `GET /estado`, `POST /lote`, `POST /refrescar` (descarga desde
+  SUNAT) y `POST /subir` (padrón `.xlsx` manual).
+- `SirePropuesta` + migración `create_sire_propuestas_table` (**única**
+  `company_id`+`libro`+`periodo`, sin duplicados); `SireService` genera RVIE/RCE
+  desde los comprobantes del periodo; `SireController` bajo `api/v1/sire`:
+  `GET /{libro}?periodo=AAAA-MM[&preview=1]` (genera, archiva y descarga el
+  `.TXT` en windows-1252 con el nombre oficial), `GET /{libro}/{periodo}`
+  (recupera la archivada), `GET /` (lista), `POST /subir` (archiva un `.TXT`
+  descargado del portal). El **periodo canónico es `AAAA-MM`**; la columna es
+  `string(7)`.
+- En `SireService`, la fecha se formatea **una sola vez** al construir la línea
+  (`d/m/Y`); no re-parsear con `Carbon::parse()` un `d/m/Y` ya formateado, porque
+  lo interpreta como `m/d/Y` y desfasa el mes.
+- `rep_legal_doc` es **string(30)**: el DNI del representante legal llegó a 20 y
+  provocó truncado; no reducirlo.
+- La sincronización real deja **1162 registros** en BD (padrón oficial SUNAT).
+- Tests: `tests/Feature/SscoPadronTest.php` y `tests/Feature/SirePropuestaTest.php`
+  (Pest, `RefreshDatabase`, `actingAs(User::factory())`).
+
+Pendiente conocido: **`/v1/compras` no existe en el backend** (404). El registro
+de compras del libro no se puede cargar desde la API todavía; la integración de
+compras PWA↔API sigue abierta. El cruce SSCO de compras solo opera con datos
+cargados localmente.
+
 ## Backend (Laravel 12 + Greenter) — contrato relevante
 
 El backend vive aparte (fork `JeanEdberg/Api-de-facturacion-electronica-sunat-Peru`).
