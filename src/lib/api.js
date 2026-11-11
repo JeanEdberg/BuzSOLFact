@@ -277,6 +277,41 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return filename;
     },
 
+    // Resúmenes diarios (boletas).
+    async listResumenes({ companyId, branchId } = {}) {
+      return listarPaginado('daily-summaries', { companyId, branchId });
+    },
+
+    async boletasPendientesResumen({ companyId, branchId, fechaEmision }) {
+      const params = new URLSearchParams({
+        company_id: String(companyId),
+        branch_id: String(branchId),
+        fecha_emision: fechaEmision,
+      });
+      const response = await request(`/v1/daily-summaries/pending?${params}`);
+      const json = await response.json();
+      return { items: normalizarLista(json), total: json?.total ?? 0 };
+    },
+
+    async crearResumen({ companyId, branchId, fechaResumen }) {
+      const response = await request('/v1/daily-summaries', {
+        method: 'POST',
+        body: JSON.stringify({
+          company_id: companyId,
+          branch_id: branchId,
+          fecha_resumen: fechaResumen,
+        }),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async consultarEstadoResumen(id) {
+      const response = await request(`/v1/daily-summaries/${id}/check-status`, { method: 'POST' });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     // Emisión masiva desde CSV/XLSX. Devuelve el resumen con emitidos y errores.
     async cargaMasiva({ companyId, branchId, file, enviarSunat = false }) {
       const form = new FormData();
