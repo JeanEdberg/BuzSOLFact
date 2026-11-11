@@ -33,7 +33,11 @@ npm test         # vitest (src/lib/*.test.js)
 - El tipo de cambio se resuelve por fecha (`src/lib/tipoCambio.js`) porque la API
   no lo persiste. La PWA no puede leer el TXT de SUNAT (CORS restringido a
   `ww3.sunat.gob.pe`), así que requiere el proxy `GET /v1/tipo-cambio?fecha=`.
-  Se usa la tasa de venta. La caché se indexa por fecha y deduplica peticiones.
+  La API responde `{success, message, data:{fecha, compra, venta}}`; el cliente
+  desenvuelve `data` (y también acepta el TXT crudo). Se usa la tasa de venta. La
+  caché se indexa por fecha y deduplica peticiones.
+  El backend Laravel ya implementa el proxy
+  ([PR #1](https://github.com/bvislao/Api-de-facturacion-electronica-sunat-Peru/pull/1)).
 - El generador PLE (`src/lib/ple.js`) sigue el Anexo N.º 2 de la **RS
   112-2021/SUNAT**: campos separados por `|`, línea terminada en `|`, fechas
   `DD/MM/AAAA`, montos a 2 decimales, NC/ND con signo negativo.

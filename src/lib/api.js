@@ -73,7 +73,11 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     async getTipoCambio(fecha) {
       const response = await request(`/v1/tipo-cambio?fecha=${encodeURIComponent(fecha)}`);
       const contentType = response.headers.get('Content-Type') || '';
-      if (contentType.includes('application/json')) return response.json();
+      if (contentType.includes('application/json')) {
+        const json = await response.json();
+        // La API envuelve las respuestas en { success, message, data }.
+        return json?.data ?? json;
+      }
       return parseTipoCambio(await response.text());
     },
 

@@ -78,16 +78,20 @@ un proxy con caché por fecha:
 
 ```
 GET {VITE_API_URL}/v1/tipo-cambio?fecha=2026-11-10
-  -> { "fecha": "2026-11-10", "compra": 3.409, "venta": 3.418 }
+  -> { "success": true, "message": "...",
+       "data": { "fecha": "2026-11-10", "compra": 3.409, "venta": 3.418 } }
 ```
 
-El cliente acepta JSON o el TXT crudo de SUNAT. Se usa la **tasa de venta** para
-convertir la operación a soles. `src/lib/tipoCambio.js` cachea por fecha (una
-sola consulta aunque haya muchos comprobantes del mismo día) y deduplica las
-peticiones simultáneas.
+El cliente acepta JSON (y desenvuelve `data`) o el TXT crudo de SUNAT. Se usa la
+**tasa de venta** para convertir la operación a soles. `src/lib/tipoCambio.js`
+cachea por fecha (una sola consulta aunque haya muchos comprobantes del mismo
+día) y deduplica las peticiones simultáneas.
 
-**Pendiente en el backend (Laravel):** implementar esa ruta. Debe consultar el
-TXT de SUNAT, parsearlo y guardar la tasa por fecha para servir el histórico.
+**Backend (Laravel):** el proxy está implementado en el PR
+[`bvislao/Api-de-facturacion-electronica-sunat-Peru#1`](https://github.com/bvislao/Api-de-facturacion-electronica-sunat-Peru/pull/1)
+(endpoint `GET /api/v1/tipo-cambio`, tabla `tipo_cambios` y comando diario
+`sunat:sync-tipo-cambio`). Como SUNAT solo publica la tasa del día, el backend la
+persiste a diario para ir acumulando el histórico.
 
 ## Libros Electrónicos (PLE y SIRE)
 
