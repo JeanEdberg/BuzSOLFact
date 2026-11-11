@@ -223,7 +223,11 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   `client_secret`, `ruc_proveedor`, `usuario_sol`, `clave_sol`), `POST /test-connection`,
   `DELETE /clear`, `POST /copy`; además `GET /gre-credentials/defaults/{modo}`.
 - `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
-  `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`.
+  `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`,
+  `POST /{id}/adjuntos` (multipart `archivo` PDF/imagen) y
+  `GET /{id}/adjunto` (descarga). El listado añade `alertas.certificado` con
+  `tiene`, `vencido`, `por_vencer`, `vence_en` y `dias_restantes`; el panel
+  pinta un aviso cuando el certificado venció o está por vencer.
 - `compras` (recibidos): `GET /` (paginador), `POST /` (alta manual),
   `POST /importar-xml` (multipart `company_id` + `xml`), `GET /{id}`,
   `DELETE /{id}`. Se deduplica por `(empresa, proveedor, tipo, serie, correlativo)`

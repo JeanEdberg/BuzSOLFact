@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Bell, RefreshCw, Loader2, AlertCircle, CheckCircle2, MailOpen,
-  Plus, Building2, Paperclip, ExternalLink, X,
+  Plus, Building2, Paperclip, ExternalLink, X, Upload, Download, ShieldAlert,
 } from 'lucide-react';
 import { api } from './lib/api.js';
 import { notificaciones as demoNotificaciones } from './lib/sampleData.js';
@@ -26,6 +26,7 @@ export default function BuzonPanel({ conectado }) {
   const [empresaId, setEmpresaId] = useState(null);
   const [items, setItems] = useState([]);
   const [resumen, setResumen] = useState({ pendientes: 0, total: 0 });
+  const [alertaCert, setAlertaCert] = useState(null);
   const [entidad, setEntidad] = useState('');
   const [cargando, setCargando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
@@ -34,6 +35,9 @@ export default function BuzonPanel({ conectado }) {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [nueva, setNueva] = useState({ entidad: 'SUNAT', asunto: '', tipo: '', fecha: '', codigo: '', detalle: '', url: '' });
   const [guardando, setGuardando] = useState(false);
+  const [subiendoId, setSubiendoId] = useState(null);
+  const fileInputRef = useRef(null);
+  const adjuntoDestino = useRef(null);
 
   async function cargarEmpresas() {
     try {
@@ -52,12 +56,13 @@ export default function BuzonPanel({ conectado }) {
     setCargando(true);
     setError(null);
     try {
-      const { items: lista, resumen: r } = await api.listNotificaciones({
+      const { items: lista, resumen: r, alertas } = await api.listNotificaciones({
         companyId: id,
         entidad: filtro || undefined,
       });
       setItems(lista);
       setResumen(r);
+      setAlertaCert(alertas?.certificado ?? null);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -104,6 +109,40 @@ export default function BuzonPanel({ conectado }) {
     try {
       await api.marcarNotificacionLeida(n.id);
       await cargarNotificaciones(empresaId);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  function elegirAdjunto(n) {
+    adjuntoDestino.current = n.id;
+    fileInputRef.current?.click();
+  }
+
+  async function subirAdjunto(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    const id = adjuntoDestino.current;
+    if (!file || !id) return;
+    setSubiendoId(id);
+    setError(null);
+    setMensaje(null);
+    try {
+      await api.adjuntarNotificacion(id, file);
+      await cargarNotificaciones(empresaId);
+      setMensaje('Adjunto guardado correctamente.');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSubiendoId(null);
+      adjuntoDestino.current = null;
+    }
+  }
+
+  async function descargarAdjunto(n) {
+    setError(null);
+    try {
+      await api.descargarAdjuntoNotificacion(n.id);
     } catch (e) {
       setError(e.message);
     }
@@ -210,6 +249,25 @@ export default function BuzonPanel({ conectado }) {
         </div>
       )}
 
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,image/jpeg,image/png"
+        className="hidden"
+        onChange={subirAdjunto}
+      />
+
+      {alertaCert?.tiene && (alertaCert.vencido || alertaCert.por_vencer) && (
+        <div className={`flex items-start gap-2 text-sm rounded-lg px-4 py-2 border ${alertaCert.vencido ? 'text-red-300 bg-red-500/10 border-red-500/30' : 'text-amber-200 bg-amber-500/10 border-amber-500/30'}`}>
+          <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+          <span>
+            {alertaCert.vencido
+              ? `El certificado digital de esta empresa venció el ${fechaCorta(alertaCert.vence_en)}. Renueva el certificado en Accesos SOL para poder emitir.`
+              : `El certificado digital de esta empresa vence el ${fechaCorta(alertaCert.vence_en)} (en ${alertaCert.dias_restantes} día(s)). Conviene renovarlo pronto.`}
+          </span>
+        </div>
+      )}
+
       {mostrarForm && (
         <form onSubmit={registrar} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -258,7 +316,21 @@ export default function BuzonPanel({ conectado }) {
                 {n.detalle && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{n.detalle}</p>}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                {n.tiene_adjunto && <Paperclip size={15} className="text-slate-400" title="Con adjunto" />}
+                {n.tiene_adjunto ? (
+                  <button onClick={() => descargarAdjunto(n)} className="text-slate-400 hover:text-white" title="Descargar adjunto">
+                    <Download size={15} />
+                  </button>
+                ) : (
+                  <span className="text-slate-600" title="Sin adjunto"><Paperclip size={15} /></span>
+                )}
+                <button
+                  onClick={() => elegirAdjunto(n)}
+                  disabled={subiendoId === n.id}
+                  className="text-slate-400 hover:text-white disabled:opacity-40"
+                  title={n.tiene_adjunto ? 'Reemplazar adjunto' : 'Adjuntar expediente (PDF/imagen)'}
+                >
+                  {subiendoId === n.id ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                </button>
                 {n.url && (
                   <a href={n.url} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-white"><ExternalLink size={15} /></a>
                 )}

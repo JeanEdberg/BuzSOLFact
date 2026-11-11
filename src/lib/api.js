@@ -548,6 +548,7 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
         items: paginador.data ?? [],
         total: paginador.total ?? (paginador.data?.length ?? 0),
         resumen: json?.resumen ?? { pendientes: 0, total: 0 },
+        alertas: json?.alertas ?? null,
       };
     },
 
@@ -573,6 +574,26 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       });
       const json = await response.json();
       return json?.data ?? json;
+    },
+
+    // Adjunta (o reemplaza) el expediente PDF/imagen de una notificación.
+    async adjuntarNotificacion(id, file) {
+      const form = new FormData();
+      form.append('archivo', file);
+      const response = await request(`/v1/notificaciones/${id}/adjuntos`, { method: 'POST', body: form });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Descarga el adjunto de una notificación (PDF/imagen).
+    async descargarAdjuntoNotificacion(id) {
+      const response = await request(`/v1/notificaciones/${id}/adjunto`);
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);
+      const filename = match ? decodeURIComponent(match[1].replace(/"/g, '')) : `notificacion-${id}`;
+      saveBlob(blob, filename);
+      return filename;
     },
 
     // La PWA no puede leer tipoCambio.txt de SUNAT directamente (CORS). El backend
