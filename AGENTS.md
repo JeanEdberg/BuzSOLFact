@@ -57,11 +57,12 @@ volver a generarlos.
 - Al añadir columnas a los libros, actualizar `ple.test.js` / `sire.test.js`
   (los tests fijan la posición y el conteo de campos).
 - **Pestañas de operación**: `CargaMasiva.jsx` (emisión masiva desde plantilla),
-  `ImportacionHistorica.jsx` (histórico PLE/plantilla) y `NotasGuiasPanel.jsx`
-  (notas 07/08 y guías 09) siguen el mismo patrón: reciben `api` y `conectado`,
-  cargan empresa/sucursal y muestran aviso ámbar cuando no hay API. El
-  `NotasGuiasPanel` reutiliza los catálogos del backend para los motivos y la
-  modalidad de traslado, y usa `descargarDocumento(recurso, id, format)`.
+  `EmisionIndividual.jsx` (factura/boleta individual), `ImportacionHistorica.jsx`
+  (histórico PLE/plantilla) y `NotasGuiasPanel.jsx` (notas 07/08 y guías 09)
+  siguen el mismo patrón: reciben `api` y `conectado`, cargan empresa/sucursal y
+  muestran aviso ámbar cuando no hay API. El `NotasGuiasPanel` reutiliza los
+  catálogos del backend para los motivos y la modalidad de traslado, y usa
+  `descargarDocumento(recurso, id, format)`.
 
 ## Backend (Laravel 12 + Greenter) — contrato relevante
 

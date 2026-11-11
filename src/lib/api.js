@@ -190,6 +190,25 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // Emite una factura o boleta individual (no masiva).
+    async crearFactura(payload) {
+      const response = await request('/v1/invoices', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    async crearBoleta(payload) {
+      const response = await request('/v1/boletas', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     async crearNotaCredito(payload) {
       const response = await request('/v1/credit-notes', {
         method: 'POST',

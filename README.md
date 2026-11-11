@@ -24,6 +24,7 @@ npm test         # pruebas de los generadores PLE
 | Buzón SUNAT / SUNAFIL | Notificaciones electrónicas **por empresa**, con sincronización y alta manual. |
 | Registro de Compras | Comprobantes recibidos **por empresa**: alta manual o importando el XML UBL del proveedor. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
+| Emitir Comprobante | Emisión individual de una factura o boleta (cliente + ítems), con envío opcional a SUNAT. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
 | Notas y Guías | Emite notas de crédito/débito y guías de remisión; envía a SUNAT y descarga XML/CDR/PDF. |
 | Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, la propuesta SIRE del servidor y un Excel corto (ventas y compras). |
@@ -212,6 +213,24 @@ DELETE {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
 Cada sucursal lleva su propio numerador, de modo que dos locales pueden emitir
 facturas con series distintas sin chocar entre sí.
 
+## Emisión individual
+
+La pestaña **Emitir Comprobante** arma una **factura** o **boleta** de una sola
+vez: empresa y sucursal, serie y fecha, cliente (tipo/número de documento,
+razón social y dirección) y los ítems con unidad, cantidad, valor unitario y
+tipo de afectación al IGV. Para la factura se indica la **forma de pago**
+(contado/crédito) y la fecha de vencimiento; la boleta se envía de forma
+individual.
+
+El correlativo lo asigna el backend por sucursal. La casilla *Enviar a SUNAT
+después de emitir* encadena la emisión y el envío; el comprobante aparece luego
+en la pestaña *Facturación & Boletas* para descargar XML/CDR/PDF.
+
+```
+POST {VITE_API_URL}/v1/invoices    (factura)
+POST {VITE_API_URL}/v1/boletas     (boleta)
+```
+
 ## Notas y guías
 
 La pestaña **Notas y Guías** emite los tres documentos que acompañan a la
@@ -290,6 +309,7 @@ src/
   BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
   CargaMasiva.jsx  emisión masiva de comprobantes (plantilla CSV/XLSX)
   ImportacionHistorica.jsx  importación de períodos anteriores (PLE / plantilla)
+  EmisionIndividual.jsx  emisión individual de facturas y boletas
   NotasGuiasPanel.jsx  emisión de notas de crédito/débito y guías de remisión
   SeriesPanel.jsx  series y correlativos por sucursal
   main.jsx         punto de entrada + registro del service worker

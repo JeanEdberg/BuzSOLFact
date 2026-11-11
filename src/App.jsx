@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
@@ -17,6 +17,7 @@ import BuzonPanel from './BuzonPanel.jsx';
 import CargaMasiva from './CargaMasiva.jsx';
 import ImportacionHistorica from './ImportacionHistorica.jsx';
 import NotasGuiasPanel from './NotasGuiasPanel.jsx';
+import EmisionIndividual from './EmisionIndividual.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
 
 const api = createApi();
@@ -30,6 +31,7 @@ const TABS = [
   { id: 'buzon', label: 'Buzón SUNAT / SUNAFIL', icon: Bell },
   { id: 'compras', label: 'Registro de Compras', icon: ShoppingCart },
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
+  { id: 'emision', label: 'Emitir Comprobante', icon: FilePlus },
   { id: 'masiva', label: 'Carga Masiva', icon: Upload },
   { id: 'historico', label: 'Importar Histórico', icon: History },
   { id: 'notas', label: 'Notas y Guías', icon: FileMinus },
@@ -471,6 +473,11 @@ export default function App() {
     setCompras((res.items ?? []).map((d) => mapCompra(d)));
   }
 
+  async function recargarVentas() {
+    const emitidos = await api.listVentas();
+    setVentas(emitidos.map((d) => mapVenta(d)));
+  }
+
   async function handleImportarCompra(file) {
     if (!file) return;
     if (!companyId) {
@@ -629,6 +636,15 @@ export default function App() {
                 busy={busy}
               />
             </div>
+          )}
+
+          {activeTab === 'emision' && (
+            <EmisionIndividual
+              api={api}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+              onEmitido={recargarVentas}
+            />
           )}
 
           {activeTab === 'masiva' && (
