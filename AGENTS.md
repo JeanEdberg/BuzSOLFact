@@ -52,3 +52,30 @@ npm test         # vitest (src/lib/*.test.js)
   SIRE reemplaza la propuesta con las banderas `021112`.
 - Al añadir columnas a los libros, actualizar `ple.test.js` / `sire.test.js`
   (los tests fijan la posición y el conteo de campos).
+
+## Backend (Laravel 12 + Greenter) — contrato relevante
+
+El backend vive aparte (fork `JeanEdberg/Api-de-facturacion-electronica-sunat-Peru`).
+Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
+
+- `companies`: `GET /companies` (lista ligera con `usuario_sol`, `modo_produccion`,
+  `contribuyente_amazonia`, `tipo_amazonia`), `GET /companies/{id}` (`data.company`),
+  `PUT /companies/{id}` (objeto completo; con archivo se usa `POST` + `_method=PUT`).
+- `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
+  `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`.
+- `tipo-cambio`: `GET /tipo-cambio?fecha=AAAA-MM-DD`.
+
+Reglas del backend que conviene no romper:
+
+- **Multiempresa real**: cada empresa tiene sus credenciales SOL y su **propio
+  certificado** (`certificado_pem`, guardado por RUC). El certificado se resuelve
+  por empresa en `GreenterService`; NO volver a una ruta fija compartida.
+- Los secretos (`clave_sol`, `certificado_password`) van en `$hidden`. Al
+  actualizar, si llegan vacíos o nulos el backend **conserva** el valor previo
+  (Laravel convierte `""` en `null`). La UI nunca muestra el valor actual.
+- El buzón se deduplica por `(company_id, entidad, codigo)`. SUNAT/SUNAFIL no
+  publican API REST pública del buzón: la sincronización usa un endpoint
+  configurable (`SUNAT_BUZON_ENDPOINT`, `SUNAFIL_BUZON_ENDPOINT`); sin él, el
+  alta manual sigue funcionando.
+- Autorización por empresa: `User::canAccessCompany($id)` (el super admin accede
+  a todas). Filtrar por `company_id` cuando se envía; si no, la empresa del usuario.
