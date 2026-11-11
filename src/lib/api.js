@@ -123,4 +123,9 @@ export function downloadText(filename, content) {
   saveBlob(new Blob([content], { type: 'text/plain;charset=windows-1252' }), filename);
 }
 
+// Descarga binaria (por ejemplo el .xlsx del libro corto).
+export function downloadBlob(bytes, filename, type = 'application/octet-stream') {
+  saveBlob(new Blob([bytes], { type }), filename);
+}
+
 export const api = createApi();

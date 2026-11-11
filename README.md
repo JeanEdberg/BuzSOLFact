@@ -25,7 +25,7 @@ npm test         # pruebas de los generadores PLE
 | Registro de Compras | Comprobantes recibidos con descarga XML/PDF/CDR. |
 | Facturación & Boletas | Comprobantes emitidos con descarga XML/PDF/CDR. |
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
-| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1. |
+| Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, más un Excel corto (ventas y compras). |
 
 ## Descarga de comprobantes
 
@@ -116,6 +116,26 @@ PLE:  LE + RUC(11) + AAAAMM + 00 + libro(6) + 001111 + .TXT
 SIRE: LE + RUC(11) + AAAAMM + 00 + libro(6) + 021112 + .TXT   (02 = reemplaza la propuesta)
 ```
 
+### Libro corto (Excel)
+
+Además de los formatos oficiales, el botón **Excel** descarga
+`Libro_AAAAMM_Ventas_Compras.xlsx` con dos hojas, pensadas como resumen para el
+cliente. Columnas por registro:
+
+```
+Fecha | RUC | Cliente/Proveedor | Descripción | Base | IGV | Inafecto |
+Exonerado | ISC | Total | Estado | Verificación SIRE | Amazonía
+```
+
+- **Estado**: `Aceptado`, `Pendiente`, `Anulado`, etc. según la respuesta de SUNAT.
+- **Verificación SIRE**: qué artefactos existen del comprobante (`XML`, `CDR`, `PDF`).
+- **Amazonía**: mensaje de la leyenda de exoneración del IGV de la Ley de la
+  Amazonía (catálogo n.º 52): `2001` bienes, `2002` servicios, `2003` contratos
+  de construcción. La última fila de cada hoja es un `TOTAL`.
+
+El `.xlsx` se genera en el navegador sin dependencias (`src/lib/xlsx.js`, un
+escritor ZIP + OOXML mínimo) y lo consume `src/lib/libroCorto.js`.
+
 ## Estructura
 
 ```
@@ -131,6 +151,8 @@ src/
     tipoCambio.js  tipo de cambio SUNAT por fecha (proxy del backend)
     ple.js         generadores PLE 14.1 / 8.1
     sire.js        generadores SIRE RVIE / RCE
+    xlsx.js        escritor .xlsx mínimo (ZIP + OOXML), sin dependencias
+    libroCorto.js  Excel corto de ventas y compras
     *.test.js      pruebas de los generadores y del mapeador
     sampleData.js  datos de demostración
 ```

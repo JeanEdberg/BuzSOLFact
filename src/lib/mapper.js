@@ -80,6 +80,13 @@ export function mapVenta(doc, { tipoCambio } = {}) {
     total: doc.mto_imp_venta,
     cliente: contraparte(doc.client),
     estado_sunat: doc.estado_sunat,
+    // Para el libro corto (Excel) y la verificación de artefactos.
+    descripcion: doc.descripcion,
+    detalles: doc.detalles,
+    leyendas: doc.leyendas,
+    xml_path: doc.xml_path,
+    cdr_path: doc.cdr_path,
+    pdf_path: doc.pdf_path,
   };
 }
 
@@ -103,11 +110,20 @@ export function mapCompra(doc, { tipoCambio } = {}) {
     bi_gravada_no_grav: doc.mto_oper_gravadas_no_grav ?? doc.bi_gravada_no_grav,
     igv_no_grav: doc.mto_igv_no_grav ?? doc.igv_no_grav,
     no_gravada: doc.mto_oper_exoneradas ?? doc.no_gravada,
+    exonerada: doc.mto_oper_exoneradas ?? doc.exonerada,
+    inafecta: doc.mto_oper_inafectas ?? doc.inafecta,
     isc: doc.mto_isc,
     icbper: doc.mto_icbper,
     otros_tributos: doc.mto_otros_tributos,
     total: doc.mto_imp_venta ?? doc.total,
     proveedor: contraparte(doc.proveedor ?? doc.client),
     estado_sunat: doc.estado_sunat,
+    // Para el libro corto (Excel) y la verificación de artefactos.
+    descripcion: doc.descripcion,
+    detalles: doc.detalles,
+    leyendas: doc.leyendas,
+    xml_path: doc.xml_path,
+    cdr_path: doc.cdr_path,
+    pdf_path: doc.pdf_path,
   };
 }

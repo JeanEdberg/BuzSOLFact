@@ -3,9 +3,10 @@ import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2, RefreshCw,
   Download, AlertCircle, BookOpen, Plug, Loader2,
 } from 'lucide-react';
-import { createApi, downloadText } from './lib/api.js';
+import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
+import { buildLibroCorto } from './lib/libroCorto.js';
 import { mapVenta } from './lib/mapper.js';
 import { crearServicioTipoCambio, normalizarFecha } from './lib/tipoCambio.js';
 import {
@@ -162,6 +163,20 @@ function LibrosPanel({ ventas, compras }) {
     }
   }
 
+  // Excel corto: una hoja de ventas y otra de compras del periodo, con las
+  // columnas resumidas que usa el cliente (incluye Amazonía y verificación SIRE).
+  function generarExcel() {
+    setMensaje(null);
+    try {
+      const built = buildLibroCorto(ventasPeriodo, comprasPeriodo);
+      const nombre = `Libro_${periodo.replace('-', '')}_Ventas_Compras.xlsx`;
+      downloadBlob(built.bytes, nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      setMensaje(`Generado ${nombre} · ${ventasPeriodo.length} venta(s) y ${comprasPeriodo.length} compra(s).`);
+    } catch (error) {
+      setMensaje(`No se pudo generar el Excel: ${error.message}`);
+    }
+  }
+
   const cards = [
     { tipo: 'ventas', titulo: 'Registro de Ventas e Ingresos', resumen: resumenVentas },
     { tipo: 'compras', titulo: 'Registro de Compras', resumen: resumenCompras },
@@ -181,9 +196,17 @@ function LibrosPanel({ ventas, compras }) {
         </div>
         <p className="text-xs text-slate-400">
           Formatos oficiales SUNAT: <strong>PLE</strong> (RS 112-2021, histórico) y <strong>SIRE</strong> (vigente).
-          Separador <code>|</code>, codificación latin-1.
+          Separador <code>|</code>, codificación latin-1. El <strong>Excel</strong> es un resumen corto (ventas y compras) para el cliente.
         </p>
       </div>
+
+      <button
+        onClick={generarExcel}
+        disabled={generando || (!ventasPeriodo.length && !comprasPeriodo.length)}
+        className="flex items-center gap-2 bg-emerald-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <Download size={16} /> Descargar Excel corto (ventas y compras)
+      </button>
 
       {faltaTc > 0 && (
         <div className="flex items-center gap-2 text-sm text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
