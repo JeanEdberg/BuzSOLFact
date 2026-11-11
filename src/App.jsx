@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered,
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History,
 } from 'lucide-react';
 import { createApi, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
@@ -15,6 +15,7 @@ import {
 import AccesosSol from './AccesosSol.jsx';
 import BuzonPanel from './BuzonPanel.jsx';
 import CargaMasiva from './CargaMasiva.jsx';
+import ImportacionHistorica from './ImportacionHistorica.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
 
 const api = createApi();
@@ -29,6 +30,7 @@ const TABS = [
   { id: 'compras', label: 'Registro de Compras', icon: ShoppingCart },
   { id: 'facturas', label: 'Facturación & Boletas', icon: FileText },
   { id: 'masiva', label: 'Carga Masiva', icon: Upload },
+  { id: 'historico', label: 'Importar Histórico', icon: History },
   { id: 'guias', label: 'Guías de Remisión', icon: Truck },
   { id: 'libros', label: 'Libros Electrónicos', icon: BookOpen },
   { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
@@ -629,6 +631,10 @@ export default function App() {
 
           {activeTab === 'masiva' && (
             <CargaMasiva api={api} companyId={companyId} conectado={fuente === 'api'} />
+          )}
+
+          {activeTab === 'historico' && (
+            <ImportacionHistorica api={api} companyId={companyId} conectado={fuente === 'api'} />
           )}
 
           {activeTab === 'guias' && (

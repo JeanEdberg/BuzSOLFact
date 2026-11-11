@@ -89,6 +89,15 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   (CSV de ejemplo). Cada fila es un ítem; las filas con el mismo `grupo` se
   consolidan en un comprobante con varias líneas. La extensión original del
   archivo se pasa a `SpreadsheetReader` (no confiar en el temporal sin extensión).
+- `historical` (importación de períodos anteriores): `POST /historical/importar`
+  (multipart `company_id`, `branch_id?`, `archivo` TXT/CSV/XLSX) y
+  `GET /historical/plantilla?tipo=ventas|compras`. `HistoricalImportService`
+  detecta el formato: si el archivo trae `|` se trata como PLE y `PleParser`
+  clasifica por número de campos (34 = Ventas 14.1, 41 = Compras 8.1); si no, se
+  lee como plantilla con columna `tipo_registro`. Los comprobantes se guardan con
+  estado `ACEPTADO` y SIN enviar a SUNAT (idempotente: reimportar actualiza).
+  En ventas se omiten las notas 07/08; en compras los buckets mixtos/no gravados
+  del PLE se suman a los principales.
 - `sire` (propuesta): `GET /sire/ventas|compras?company_id=&periodo=AAAA-MM`
   descarga el TXT oficial (`LE…021112.TXT`); con `?preview=1` devuelve
   `{filename, registros, contenido}` en JSON. RVIE = 33 campos; RCE = 41 campos

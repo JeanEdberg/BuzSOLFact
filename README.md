@@ -27,6 +27,7 @@ npm test         # pruebas de los generadores PLE
 | Guías de Remisión | Consulta y búsqueda de comprobantes. |
 | Libros Electrónicos | Genera y descarga los TXT del PLE 14.1 y 8.1, la propuesta SIRE del servidor y un Excel corto (ventas y compras). |
 | Series por sucursal | Configura las series (F001, B001…) y el correlativo de cada tipo de documento por sucursal. |
+| Importar Histórico | Carga el histórico de ventas y compras de períodos anteriores desde el TXT del PLE o una plantilla CSV/XLSX. |
 | Accesos SOL | Credenciales SOL (SUNAT) y certificado digital **por empresa**, ambiente y leyenda de Amazonía. |
 
 ## Descarga de comprobantes
@@ -210,6 +211,29 @@ DELETE {VITE_API_URL}/v1/branches/{branch}/correlatives/{id}
 Cada sucursal lleva su propio numerador, de modo que dos locales pueden emitir
 facturas con series distintas sin chocar entre sí.
 
+## Importar Histórico
+
+La pestaña **Importar Histórico** carga los comprobantes de meses o años
+anteriores en el Registro de Compras y en el de Ventas. Acepta dos orígenes:
+
+- El **TXT del PLE** que se descarga de SUNAT: Registro de Ventas 14.1 (34
+  campos) y Registro de Compras 8.1 (41 campos). El formato se detecta por el
+  número de campos de la primera línea.
+- Una **plantilla CSV/XLSX** propia (botón *Descargar plantilla*) con una columna
+  `tipo_registro` (`ventas` o `compras`) y el resto de columnas del comprobante.
+
+Los comprobantes se registran con estado `ACEPTADO` y **sin enviarse a SUNAT**,
+porque ya fueron declarados en su período. La operación es idempotente: reimportar
+el mismo archivo actualiza los comprobantes existentes en vez de duplicarlos. Las
+notas de crédito (07) y débito (08) del PLE de ventas se omiten y se informan en
+el resumen; los importes mixtos y no gravados del PLE de compras se suman a sus
+buckets principales para no perder el monto en el libro.
+
+```
+POST {VITE_API_URL}/v1/historical/importar   (multipart: archivo, company_id, branch_id?)
+GET  {VITE_API_URL}/v1/historical/plantilla?tipo=ventas|compras
+```
+
 ## Accesos SOL (multiempresa)
 
 La pestaña **Accesos SOL** permite configurar, para cada empresa, sus credenciales
@@ -234,6 +258,7 @@ src/
   AccesosSol.jsx   gestión multiempresa de credenciales SOL y certificado
   BuzonPanel.jsx   buzón electrónico SUNAT/SUNAFIL (real o demo si no hay API)
   CargaMasiva.jsx  emisión masiva de comprobantes (plantilla CSV/XLSX)
+  ImportacionHistorica.jsx  importación de períodos anteriores (PLE / plantilla)
   SeriesPanel.jsx  series y correlativos por sucursal
   main.jsx         punto de entrada + registro del service worker
   index.css        Tailwind

@@ -220,6 +220,26 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       saveBlob(blob, 'plantilla-carga-masiva.csv');
     },
 
+    // Importación de comprobantes de períodos anteriores (histórico). Acepta el
+    // TXT del PLE (Ventas 14.1 / Compras 8.1) o la plantilla CSV/XLSX. Los
+    // comprobantes se guardan SIN enviarse a SUNAT (ya fueron declarados).
+    async importarHistorico({ companyId, branchId, file }) {
+      const form = new FormData();
+      form.append('company_id', String(companyId));
+      if (branchId) form.append('branch_id', String(branchId));
+      form.append('archivo', file);
+      const response = await request('/v1/historical/importar', { method: 'POST', body: form });
+      const json = await response.json();
+      return { resumen: json?.data ?? json, message: json?.message };
+    },
+
+    // Descarga la plantilla CSV de importación histórica (tipo: ventas|compras).
+    async descargarPlantillaHistorico(tipo = 'ventas') {
+      const response = await request(`/v1/historical/plantilla?tipo=${tipo}`);
+      const blob = await response.blob();
+      saveBlob(blob, `plantilla-historico-${tipo}.csv`);
+    },
+
     // Propuesta SIRE (RVIE/RCE) generada por el backend a partir de los
     // comprobantes emitidos/recibidos del periodo. libro: 'ventas' | 'compras'.
     async descargarPropuestaSire(companyId, periodo, libro = 'ventas') {
