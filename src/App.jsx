@@ -3,7 +3,7 @@ import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
   Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt,
 } from 'lucide-react';
-import { createApi, downloadText, downloadBlob } from './lib/api.js';
+import { api, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
 import { buildLibroCorto } from './lib/libroCorto.js';
@@ -21,8 +21,6 @@ import EmisionIndividual from './EmisionIndividual.jsx';
 import ResumenDiario from './ResumenDiario.jsx';
 import RetencionesBajas from './RetencionesBajas.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
-
-const api = createApi();
 
 // El tipo de cambio se resuelve por fecha contra el backend (proxy de SUNAT).
 const tipoCambio = crearServicioTipoCambio({

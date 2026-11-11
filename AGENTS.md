@@ -25,6 +25,33 @@ Los iconos de la PWA se generan con `python3 scripts/generate-icons.py` (requier
 Pillow) hacia `public/icons/`; no se editan a mano. Si cambia el `theme-color`,
 volver a generarlos.
 
+## Integración viva PWA ↔ API (desarrollo)
+
+Para ver la app contra el backend real:
+
+1. Backend: `nohup php artisan serve --host=0.0.0.0 --port=12001` (log en
+   `/tmp/api-sunat-server.log`).
+2. PWA: `npm run dev` (puerto 12000). `vite.config.js` **proxya `/api`** a
+   `http://127.0.0.1:12001` (configurable con `VITE_API_PROXY`), así que en dev
+   no hace falta `VITE_API_URL` ni CORS.
+3. En la pestaña **Conexión API** entrar con un usuario del backend. El seeder
+   crea `admin@sunatapi.com` / `admin123456` (super admin),
+   `company@sunatapi.com` / `company123456` y `api@sunatapi.com` / `api123456`.
+
+Reglas que no romper:
+
+- **Una sola instancia de la API.** `App.jsx` y los paneles deben importar el
+  singleton `{ api }` de `src/lib/api.js`; crear otra instancia con `createApi()`
+  deja el token de login solo en esa copia y los paneles reciben 401.
+- **`per_page` está limitado a 100** en el backend (reglas `max:100` en los
+  `Index*Request`). No pedir 200/500: el cliente pagina con
+  `listarTodasLasPaginas()` (lee `last_page` del paginador de Laravel).
+- El backend responde **401** solo si la petición lleva `Accept: application/json`;
+  sin esa cabecera redirige a la ruta `login` (inexistente). El cliente ya la envía.
+- Al poblar la DB de un entorno ya existente, `php artisan migrate --force` antes
+  de probar: las tablas `daily_summaries`, `retentions` y `voided_documents`
+  pueden estar pendientes y el panel devuelve 500 (`no such table`).
+
 ## Convenciones
 
 - El cliente de la API (`src/lib/api.js`) asume el contrato real del backend:

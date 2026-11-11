@@ -42,21 +42,41 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     return response;
   }
 
-  async function listar(tipo, { desde, hasta, perPage = 500 } = {}) {
-    const params = new URLSearchParams({ per_page: String(perPage) });
-    if (desde) params.set('fecha_desde', desde);
-    if (hasta) params.set('fecha_hasta', hasta);
-    const response = await request(`/v1/${recurso({ tipo_documento: tipo })}?${params}`);
-    return normalizarLista(await response.json());
+  // El backend limita per_page a 100: se recorren todas las páginas.
+  async function listarTodasLasPaginas(path, paramsBase) {
+    const filas = [];
+    let page = 1;
+    // Tope de seguridad por si el paginador no informa last_page.
+    for (let guard = 0; guard < 500; guard++) {
+      const params = new URLSearchParams(paramsBase);
+      params.set('page', String(page));
+      const response = await request(`${path}?${params}`);
+      const json = await response.json();
+      const paginador = json?.data ?? {};
+      const lote = Array.isArray(paginador.data)
+        ? paginador.data
+        : normalizarLista(json);
+      filas.push(...lote);
+      const lastPage = paginador.last_page ?? (paginador.next_page_url ? page + 1 : page);
+      if (!lote.length || page >= lastPage) break;
+      page += 1;
+    }
+    return filas;
   }
 
-  // Listado paginado de un recurso (notas, guías): devuelve las filas del paginador.
+  async function listar(tipo, { desde, hasta } = {}) {
+    const params = new URLSearchParams({ per_page: '100' });
+    if (desde) params.set('fecha_desde', desde);
+    if (hasta) params.set('fecha_hasta', hasta);
+    return listarTodasLasPaginas(`/v1/${recurso({ tipo_documento: tipo })}`, params);
+  }
+
+  // Listado paginado de un recurso (notas, guías): recorre todas las páginas.
   async function listarPaginado(nombre, { companyId, branchId } = {}) {
-    const params = new URLSearchParams({ per_page: '200' });
+    const params = new URLSearchParams({ per_page: '100' });
     if (companyId) params.set('company_id', String(companyId));
     if (branchId) params.set('branch_id', String(branchId));
-    const response = await request(`/v1/${nombre}?${params}`);
-    return normalizarLista(await response.json());
+    return listarTodasLasPaginas(`/v1/${nombre}`, params);
   }
 
   // Catálogos (motivos, modalidades): la API responde { data: [{code, name}] }.
@@ -124,14 +144,8 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       if (fechaDesde) params.set('fecha_desde', fechaDesde);
       if (fechaHasta) params.set('fecha_hasta', fechaHasta);
       if (estadoSunat) params.set('estado_sunat', estadoSunat);
-      const qs = params.toString();
-      const response = await request(`/v1/compras${qs ? `?${qs}` : ''}`);
-      const json = await response.json();
-      const paginador = json?.data ?? {};
-      return {
-        items: paginador.data ?? [],
-        total: paginador.total ?? (paginador.data?.length ?? 0),
-      };
+      const items = await listarTodasLasPaginas('/v1/compras', params);
+      return { items, total: items.length };
     },
 
     async crearCompra(payload) {
