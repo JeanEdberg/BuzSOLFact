@@ -4,6 +4,7 @@ import {
   AlertCircle, CheckCircle2, Building2, Link2,
 } from 'lucide-react';
 import { api } from './lib/api.js';
+import { TIPOS_AMAZONIA, esContribuyenteAmazonia, tipoAmazoniaDe } from './lib/amazonia.js';
 
 const input = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
 const label = 'block text-xs text-slate-400 mb-1';
@@ -55,6 +56,12 @@ export default function NotasGuiasPanel({ conectado }) {
   const [mensaje, setMensaje] = useState(null);
 
   const [form, setForm] = useState(formInicial('nota-credito'));
+
+  // Guías de remisión: si la empresa opera en la Amazonía (Ley 27037) se puede
+  // declarar la exoneración del IGV en las observaciones del documento.
+  const empresaSel = empresas.find((e) => e.id === empresaId);
+  const esAmazonia = esContribuyenteAmazonia(empresaSel);
+  const [tipoAmazonia, setTipoAmazonia] = useState('2001');
 
   useEffect(() => {
     if (!conectado) return;
@@ -125,6 +132,7 @@ export default function NotasGuiasPanel({ conectado }) {
       setSucursales(suc);
       setClientes(cli);
       setBranchId(suc[0]?.id ?? null);
+      setTipoAmazonia(tipoAmazoniaDe(empresas.find((e) => e.id === id)));
     } catch (e) {
       setError(e.message);
     }
@@ -251,6 +259,9 @@ export default function NotasGuiasPanel({ conectado }) {
         transportista_razon_social: form.transportista_razon_social,
         transportista_nro_mtc: form.transportista_nro_mtc,
         observaciones: form.observaciones,
+        // Si la empresa opera en la Amazonía, el backend antepone la leyenda de
+        // la Ley 27037 (bien/servicio) a las observaciones de la guía.
+        ...(esAmazonia ? { tipo_amazonia: tipoAmazonia } : {}),
         documentos_relacionados: form.documentos_relacionados ?? [],
         detalles: form.detalles.map((d) => ({
           codigo: d.codigo, descripcion: d.descripcion, unidad: d.unidad, cantidad: Number(d.cantidad),
@@ -403,6 +414,9 @@ export default function NotasGuiasPanel({ conectado }) {
             facturas={facturasCliente}
             onDestinatario={cambiarDestinatario}
             onVincularFactura={vincularFactura}
+            esAmazonia={esAmazonia}
+            tipoAmazonia={tipoAmazonia}
+            setTipoAmazonia={setTipoAmazonia}
           />
         )
           : <CamposNota form={form} setCampo={setCampo} motivos={motivos} sub={sub} />}
@@ -522,7 +536,7 @@ function CamposNota({ form, setCampo, motivos, sub }) {
   );
 }
 
-function CamposGuia({ form, setCampo, motivos, modalidades, clientes, facturas, onDestinatario, onVincularFactura }) {
+function CamposGuia({ form, setCampo, motivos, modalidades, clientes, facturas, onDestinatario, onVincularFactura, esAmazonia, tipoAmazonia, setTipoAmazonia }) {
   const trasladoPorCompra = form.cod_traslado === '02';
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -655,6 +669,17 @@ function CamposGuia({ form, setCampo, motivos, modalidades, clientes, facturas, 
             <input className={input} value={form.transportista_nro_mtc} onChange={(e) => setCampo('transportista_nro_mtc', e.target.value)} />
           </div>
         </>
+      )}
+      {esAmazonia && (
+        <div className="md:col-span-2">
+          <label className={label}>Leyenda de Amazonía (Ley 27037)</label>
+          <select className={input} value={tipoAmazonia} onChange={(e) => setTipoAmazonia(e.target.value)}>
+            {TIPOS_AMAZONIA.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <span className="block text-[11px] text-slate-500 mt-1">
+            Se antepone a las observaciones de la guía para declarar la exoneración del IGV.
+          </span>
+        </div>
       )}
       <div className="md:col-span-2">
         <label className={label}>Observaciones</label>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Bell, RefreshCw, Loader2, AlertCircle, CheckCircle2, MailOpen,
-  Plus, Building2, Paperclip, ExternalLink, X, Upload, Download, ShieldAlert,
+  Plus, Building2, Paperclip, ExternalLink, X, Upload, Download, ShieldAlert, Plug,
 } from 'lucide-react';
 import { api } from './lib/api.js';
 import { notificaciones as demoNotificaciones } from './lib/sampleData.js';
@@ -32,6 +32,10 @@ export default function BuzonPanel({ conectado }) {
   const [sincronizando, setSincronizando] = useState(false);
   const [error, setError] = useState(null);
   const [mensaje, setMensaje] = useState(null);
+  const [fuente, setFuente] = useState(null);
+  const [mostrarFuente, setMostrarFuente] = useState(false);
+  const [fuenteForm, setFuenteForm] = useState({ sunat: '', sunafil: '', token: '' });
+  const [guardandoFuente, setGuardandoFuente] = useState(false);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [nueva, setNueva] = useState({ entidad: 'SUNAT', asunto: '', tipo: '', fecha: '', codigo: '', detalle: '', url: '' });
   const [guardando, setGuardando] = useState(false);
@@ -56,13 +60,14 @@ export default function BuzonPanel({ conectado }) {
     setCargando(true);
     setError(null);
     try {
-      const { items: lista, resumen: r, alertas } = await api.listNotificaciones({
+      const { items: lista, resumen: r, alertas, fuente: f } = await api.listNotificaciones({
         companyId: id,
         entidad: filtro || undefined,
       });
       setItems(lista);
       setResumen(r);
       setAlertaCert(alertas?.certificado ?? null);
+      setFuente(f);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -111,6 +116,47 @@ export default function BuzonPanel({ conectado }) {
       await cargarNotificaciones(empresaId);
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  // Carga los valores actuales de la fuente en el formulario al abrirlo.
+  async function abrirFuente() {
+    if (!empresaId) return;
+    setMensaje(null);
+    const empresa = empresas.find((e) => e.id === empresaId);
+    setFuenteForm({
+      sunat: empresa?.buzon_sunat_endpoint ?? '',
+      sunafil: empresa?.buzon_sunafil_endpoint ?? '',
+      token: '',
+    });
+    setMostrarFuente(true);
+  }
+
+  async function guardarFuente(evento) {
+    evento.preventDefault();
+    if (!empresaId) return;
+    setGuardandoFuente(true);
+    setError(null);
+    setMensaje(null);
+    try {
+      const estado = await api.configurarFuenteBuzon({
+        companyId: empresaId,
+        sunatEndpoint: fuenteForm.sunat,
+        sunafilEndpoint: fuenteForm.sunafil,
+        token: fuenteForm.token,
+      });
+      setFuente(estado);
+      setMostrarFuente(false);
+      await cargarEmpresas();
+      setMensaje(
+        estado?.configurado
+          ? 'Fuente del buzón guardada. Ya puedes sincronizar.'
+          : 'Fuente guardada, pero sin endpoint el buzón no tiene de dónde leer.',
+      );
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGuardandoFuente(false);
     }
   }
 
@@ -215,6 +261,13 @@ export default function BuzonPanel({ conectado }) {
             <Plus size={15} /> Registrar
           </button>
           <button
+            onClick={abrirFuente}
+            disabled={!empresaId}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm disabled:opacity-40"
+          >
+            <Plug size={15} /> Fuente
+          </button>
+          <button
             onClick={sincronizar}
             disabled={sincronizando || !empresaId}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
@@ -243,6 +296,66 @@ export default function BuzonPanel({ conectado }) {
           <AlertCircle size={16} className="mt-0.5 shrink-0" /> {error}
         </div>
       )}
+
+      {fuente && !fuente.configurado && (
+        <div className="flex items-start gap-2 text-sm text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Sin fuente configurada. SUNAT y SUNAFIL no publican un API REST público del buzón: pulsa
+            <strong> Fuente</strong> para apuntar al endpoint de tu proveedor PSE/OSE o a la casilla de tu
+            empresa. Mientras tanto, el alta manual sigue disponible.
+          </span>
+        </div>
+      )}
+
+      {fuente && fuente.configurado && (
+        <div className="flex items-start gap-2 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <span>
+            Fuente del buzón activa ({[fuente.sunat && 'SUNAT', fuente.sunafil && 'SUNAFIL'].filter(Boolean).join(' y ')}
+            {fuente.origenes?.includes('empresa') ? ', configurada por empresa' : ''}
+            {fuente.origenes?.includes('entorno') ? ', por entorno' : ''}). Pulsa Sincronizar para traer las notificaciones.
+          </span>
+        </div>
+      )}
+
+      {mostrarFuente && (
+        <form onSubmit={guardarFuente} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold flex items-center gap-2"><Plug size={15} /> Fuente del buzón</h4>
+            <button type="button" onClick={() => setMostrarFuente(false)} className="text-slate-400 hover:text-white"><X size={16} /></button>
+          </div>
+          <p className="text-xs text-slate-400">
+            El backend consulta estos endpoints con el RUC y el usuario SOL de la empresa y guarda lo que
+            devuelvan. Debe responder <code>{'{ "data": [ ... ] }'}</code>. Déjalo vacío para usar la fuente por entorno.
+          </p>
+          <input
+            className={input}
+            placeholder="Endpoint SUNAT (p. ej. https://tu-proveedor.pe/buzon/sunat)"
+            value={fuenteForm.sunat}
+            onChange={(e) => setFuenteForm({ ...fuenteForm, sunat: e.target.value })}
+          />
+          <input
+            className={input}
+            placeholder="Endpoint SUNAFIL (opcional)"
+            value={fuenteForm.sunafil}
+            onChange={(e) => setFuenteForm({ ...fuenteForm, sunafil: e.target.value })}
+          />
+          <input
+            className={input}
+            type="password"
+            placeholder={fuente?.token ? 'Token (dejar vacío para conservar el actual)' : 'Token (si tu fuente lo requiere)'}
+            value={fuenteForm.token}
+            onChange={(e) => setFuenteForm({ ...fuenteForm, token: e.target.value })}
+          />
+          <div className="flex justify-end">
+            <button type="submit" disabled={guardandoFuente} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40">
+              {guardandoFuente ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Guardar fuente
+            </button>
+          </div>
+        </form>
+      )}
+
       {mensaje && (
         <div className="flex items-start gap-2 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
           <CheckCircle2 size={16} className="mt-0.5 shrink-0" /> {mensaje}

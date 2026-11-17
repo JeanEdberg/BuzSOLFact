@@ -6,6 +6,9 @@ import { api } from './lib/api.js';
 import { CATALOGO07, CODIGOS_GRAVADOS, porcentajeIgvDe } from './lib/catalogo07.js';
 import { DETRACCIONES, porcentajeDetraccion, montoDetraccion } from './lib/detraccion.js';
 import { tasaEspecialTotal, TASA_GENERAL, vigenteTasaEspecial } from './lib/igvEspecial.js';
+import {
+  TIPOS_AMAZONIA, esContribuyenteAmazonia, tipoAmazoniaDe,
+} from './lib/amazonia.js';
 
 const input = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
 const label = 'block text-xs text-slate-400 mb-1';
@@ -45,11 +48,17 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
   const [mensaje, setMensaje] = useState(null);
 
   const empresa = empresas.find((e) => e.id === empresaId);
-  const esAmazonia = Boolean(empresa?.contribuyente_amazonia);
+  // La condición de Amazonía se resuelve por ubigeo (Ley 27037, art. 3.1) o por
+  // la marca manual de la empresa, igual que lo hace el backend al emitir.
+  const esAmazonia = esContribuyenteAmazonia(empresa);
 
   const [form, setForm] = useState(formInicial('factura'));
   const [detraccion, setDetraccion] = useState(detraccionInicial());
   const [regimenEspecial, setRegimenEspecial] = useState(false);
+  // Tipo de operación exonerada de la Amazonía (bien/servicio/construcción):
+  // decide el texto de la leyenda 2001/2002/2003 del comprobante.
+  const [tipoAmazonia, setTipoAmazonia] = useState('2001');
+  const [aplicarAmazonia, setAplicarAmazonia] = useState(true);
 
   function detraccionInicial() {
     return { activa: false, codigo: '020', cuenta_banco: '', medio_pago: '001' };
@@ -57,7 +66,10 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
 
   const anioEmision = Number((form.fecha_emision || '').slice(0, 4)) || new Date().getFullYear();
   const especialVigente = vigenteTasaEspecial(anioEmision);
-  const aplicaEspecial = regimenEspecial && especialVigente && !esAmazonia;
+  // La exoneración de la Amazonía y el régimen especial del IGV (Ley 31556) son
+  // excluyentes: la tasa especial solo se ofrece cuando la venta no va exonerada.
+  const exoneradoAmazonia = esAmazonia && aplicarAmazonia;
+  const aplicaEspecial = regimenEspecial && especialVigente && !exoneradoAmazonia;
 
   // Tasa total (IGV + IPM) del comprobante: especial de la Ley 31556 para MYPE
   // de restaurantes/hoteles, o general, según el año de emisión.
@@ -125,9 +137,12 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
       const suc = await api.listBranches(id);
       setSucursales(suc);
       setBranchId(suc[0]?.id ?? null);
-      // Contribuyente de la Amazonía: sus ventas van exoneradas del IGV.
-      const esAmazonia = Boolean(lista.find((e) => e.id === id)?.contribuyente_amazonia);
-      if (esAmazonia) {
+      // Contribuyente de la Amazonía: por ubigeo o por marca manual, sus ventas
+      // van exoneradas del IGV. El tipo de leyenda sale de la empresa.
+      const empresaSel = lista.find((e) => e.id === id);
+      setTipoAmazonia(tipoAmazoniaDe(empresaSel));
+      setAplicarAmazonia(true);
+      if (esContribuyenteAmazonia(empresaSel)) {
         setForm((f) => ({ ...f, detalles: f.detalles.map((d) => ({ ...d, tip_afe_igv: '20' })) }));
       }
     } catch (e) {
@@ -185,7 +200,7 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
     }
   }
 
-  const agregarItem = () => setForm((f) => ({ ...f, detalles: [...f.detalles, itemVacio(esAmazonia)] }));
+  const agregarItem = () => setForm((f) => ({ ...f, detalles: [...f.detalles, itemVacio(esAmazonia && aplicarAmazonia)] }));
   const quitarItem = (indice) => setForm((f) => ({ ...f, detalles: f.detalles.filter((_, i) => i !== indice) }));
 
   function construirPayload() {
@@ -195,6 +210,9 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
       serie: form.serie,
       fecha_emision: form.fecha_emision,
       moneda: form.moneda,
+      // El backend resuelve la exoneración de la Amazonía por ubigeo; estos
+      // campos fijan la leyenda (bien/servicio) y permiten desactivarla.
+      ...(esAmazonia ? { tipo_amazonia: tipoAmazonia, aplicar_amazonia: aplicarAmazonia } : {}),
       client: {
         tipo_documento: form.clienteTipoDoc,
         numero_documento: form.clienteNumDoc,
@@ -325,13 +343,50 @@ export default function EmisionIndividual({ api, companyId, conectado, onEmitido
         </h4>
 
         {esAmazonia && (
-          <div className="flex items-start gap-2 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-2">
-            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-            <span>
-              Empresa de la Amazonía: las ventas de bienes o servicios se emiten
-              <strong> exoneradas del IGV</strong> (afectación 20). El comprobante
-              incluirá la leyenda de Amazonía.
-            </span>
+          <div className="space-y-3 text-sm text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-4 py-3">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+              <span>
+                Empresa de la Amazonía: las ventas de bienes o servicios se emiten
+                <strong> exoneradas del IGV</strong> (afectación 20) y el comprobante
+                incluye la leyenda de la Ley 27037.
+              </span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className={label}>Tipo de operación (leyenda)</label>
+                <select
+                  className={input}
+                  value={tipoAmazonia}
+                  onChange={(e) => setTipoAmazonia(e.target.value)}
+                  disabled={!aplicarAmazonia}
+                >
+                  {TIPOS_AMAZONIA.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <label className="flex items-center gap-2 text-emerald-200 self-end pb-2">
+                <input
+                  type="checkbox"
+                  checked={aplicarAmazonia}
+                  onChange={(e) => {
+                    const activo = e.target.checked;
+                    setAplicarAmazonia(activo);
+                    // Al desactivar, las líneas vuelven a gravadas (10); al
+                    // activar, las gravadas pasan a exoneradas (20).
+                    setForm((f) => ({
+                      ...f,
+                      detalles: f.detalles.map((d) => ({
+                        ...d,
+                        tip_afe_igv: activo
+                          ? (CODIGOS_GRAVADOS.includes(d.tip_afe_igv) ? '20' : d.tip_afe_igv)
+                          : (d.tip_afe_igv === '20' ? '10' : d.tip_afe_igv),
+                      })),
+                    }));
+                  }}
+                />
+                Aplicar exoneración de la Amazonía
+              </label>
+            </div>
           </div>
         )}
 

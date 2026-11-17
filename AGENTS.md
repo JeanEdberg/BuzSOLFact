@@ -159,6 +159,32 @@ se habilita cuando el año de emisión está entre 2025 y 2027; aplica la tasa a
 ítems gravados y a la base de la detracción. Requisitos de fondo que la UI
 recuerda: MYPE con ventas anuales ≤ 1700 UIT y ≥ 70 % de ingresos del rubro.
 
+## Exoneración de la Amazonía (Ley 27037)
+
+`src/lib/amazonia.js` modela el ámbito territorial de la Amazonía (art. 3.1 de la
+Ley 27037, con las modificaciones de las Leyes 27759, 29525 y 30399). Es espejo
+de `App\Support\Amazonia` del backend y sirve para decidir en pantalla si una
+empresa opera en la zona a partir de su **ubigeo**, sin depender solo del flag
+manual `contribuyente_amazonia`.
+
+- `perteneceAmazonia(ubigeo)`: acepta 6 dígitos (o prefijos de 2/4). Devuelve
+  `true` para los departamentos íntegros (Amazonas, Loreto, Madre de Dios, San
+  Martín, Ucayali), las provincias completas (Jaén, San Ignacio, La Convención,
+  Leoncio Prado, Marañón, Pachitea, Puerto Inca, Chanchamayo, Satipo, Oxapampa)
+  y los distritos nombrados uno por uno.
+- `esContribuyenteAmazonia(empresa)`: `true` si la marca manual, el `es_amazonia`
+  que calcula el backend o el ubigeo indican Amazonía.
+- `tipoAmazoniaDe(empresa)`: leyenda por defecto (2001 bienes / 2002 servicios /
+  2003 construcción).
+
+En `EmisionIndividual.jsx` el bloque verde de Amazonía ofrece el selector de
+leyenda y un interruptor *Aplicar exoneración*: al activarlo las líneas gravadas
+pasan a exoneradas (afectación 20) y el payload envía `tipo_amazonia` y
+`aplicar_amazonia`. La exoneración y el régimen especial de la Ley 31556 son
+excluyentes. `NotasGuiasPanel.jsx` añade el selector de leyenda a las guías (el
+backend la antepone a `observaciones`) y `AccesosSol.jsx` avisa cuando el ubigeo
+de la empresa ya cae en la Amazonía aunque el interruptor esté en «No».
+
 ## Validación SSCO / SIRE
 
 Módulo de control tributario: marca las contrapartes que SUNAT publica como

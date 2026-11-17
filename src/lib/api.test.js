@@ -86,3 +86,49 @@ describe('api.enviarSunat', () => {
     expect(llamadas[0].options.headers['Content-Type']).toBe('application/json');
   });
 });
+
+describe('api.listNotificaciones', () => {
+  it('devuelve items, resumen, alertas y fuente del buzón', async () => {
+    const llamadas = mockFetch([
+      {
+        data: { data: [{ id: 1, entidad: 'SUNAT', asunto: 'Resolución' }], total: 1 },
+        resumen: { pendientes: 1, total: 1 },
+        alertas: { certificado: { tiene: true, por_vencer: false, vencido: false } },
+        fuente: { sunat: true, sunafil: false, configurado: true, token: true, origenes: ['empresa'] },
+      },
+    ]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const res = await api.listNotificaciones({ companyId: 1, entidad: 'SUNAT' });
+
+    expect(llamadas[0].url).toBe('/api/v1/notificaciones?company_id=1&entidad=SUNAT');
+    expect(res.items).toHaveLength(1);
+    expect(res.resumen.total).toBe(1);
+    expect(res.fuente.configurado).toBe(true);
+  });
+});
+
+describe('api.configurarFuenteBuzon', () => {
+  it('envía endpoints y token, y devuelve el estado', async () => {
+    const llamadas = mockFetch([
+      { data: { sunat: true, sunafil: false, configurado: true, token: true, origenes: ['empresa'] } },
+    ]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const estado = await api.configurarFuenteBuzon({
+      companyId: 7,
+      sunatEndpoint: 'https://proveedor.test/buzon',
+      token: 'tok',
+    });
+
+    expect(llamadas[0].url).toBe('/api/v1/notificaciones/fuente');
+    expect(llamadas[0].options.method).toBe('POST');
+    expect(JSON.parse(llamadas[0].options.body)).toEqual({
+      company_id: 7,
+      buzon_sunat_endpoint: 'https://proveedor.test/buzon',
+      buzon_sunafil_endpoint: '',
+      buzon_token: 'tok',
+    });
+    expect(estado.configurado).toBe(true);
+  });
+});

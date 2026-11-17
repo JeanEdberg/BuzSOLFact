@@ -4,12 +4,7 @@ import {
   AlertCircle, CheckCircle2, RefreshCw,
 } from 'lucide-react';
 import { api } from './lib/api.js';
-
-const TIPOS_AMAZONIA = [
-  { value: '2001', label: '2001 · Bienes transferidos en la Amazonía' },
-  { value: '2002', label: '2002 · Servicios prestados en la Amazonía' },
-  { value: '2003', label: '2003 · Contratos de construcción en la Amazonía' },
-];
+import { TIPOS_AMAZONIA, esContribuyenteAmazonia, perteneceAmazonia } from './lib/amazonia.js';
 
 function Campo({ label, children, hint }) {
   return (
@@ -73,6 +68,9 @@ export default function AccesosSol({ conectado }) {
         modo_produccion: Boolean(c.modo_produccion),
         contribuyente_amazonia: Boolean(c.contribuyente_amazonia),
         tipo_amazonia: c.tipo_amazonia ?? '2001',
+        ubigeo: c.ubigeo ?? '',
+        distrito: c.distrito ?? '',
+        departamento: c.departamento ?? '',
       });
     } catch (e) {
       setError(e.message);
@@ -89,11 +87,12 @@ export default function AccesosSol({ conectado }) {
     setMensaje(null);
     setError(null);
     try {
+      const amazoniaActiva = form.contribuyente_amazonia || perteneceAmazonia(form.ubigeo);
       const base = {
         usuario_sol: form.usuario_sol,
         modo_produccion: form.modo_produccion ? '1' : '0',
         contribuyente_amazonia: form.contribuyente_amazonia ? '1' : '0',
-        tipo_amazonia: form.contribuyente_amazonia ? form.tipo_amazonia : '',
+        tipo_amazonia: amazoniaActiva ? form.tipo_amazonia : '',
       };
       if (form.clave_sol) base.clave_sol = form.clave_sol;
       if (form.certificado_password) base.certificado_password = form.certificado_password;
@@ -179,9 +178,10 @@ export default function AccesosSol({ conectado }) {
                 <span className={`text-[10px] px-2 py-0.5 rounded-full ${e.modo_produccion ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
                   {e.modo_produccion ? 'Producción' : 'Beta'}
                 </span>
-                {e.contribuyente_amazonia && (
+                {esContribuyenteAmazonia(e) && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-500/20 text-teal-300 flex items-center gap-1">
                     <Leaf size={10} /> Amazonía
+                    {!e.contribuyente_amazonia && <span className="opacity-70">(por ubigeo)</span>}
                   </span>
                 )}
               </div>
@@ -219,13 +219,22 @@ export default function AccesosSol({ conectado }) {
                 <option value="1">Producción</option>
               </select>
             </Campo>
-            <Campo label="Contribuyente de la Amazonía" hint="Activa la leyenda de exoneración del IGV (catálogo n.º 52).">
+            <Campo label="Contribuyente de la Amazonía" hint="La exoneración del IGV (Ley 27037) se detecta por el ubigeo; este interruptor la fuerza si tu caso no calza en el padrón.">
               <select className={input} value={form.contribuyente_amazonia ? '1' : '0'} onChange={(e) => set('contribuyente_amazonia', e.target.value === '1')}>
                 <option value="0">No</option>
                 <option value="1">Sí</option>
               </select>
             </Campo>
-            {form.contribuyente_amazonia && (
+            {!form.contribuyente_amazonia && perteneceAmazonia(form.ubigeo) && (
+              <div className="sm:col-span-2 flex items-start gap-2 text-xs text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 rounded-lg px-3 py-2">
+                <Leaf size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  El ubigeo {form.ubigeo} ({form.distrito || 'distrito'} · {form.departamento || 'departamento'}) pertenece
+                  al ámbito de la Amazonía (Ley 27037): las ventas se emitirán exoneradas del IGV aunque el interruptor esté en «No».
+                </span>
+              </div>
+            )}
+            {(form.contribuyente_amazonia || perteneceAmazonia(form.ubigeo)) && (
               <Campo label="Tipo de operación (leyenda Amazonía)">
                 <select className={input} value={form.tipo_amazonia} onChange={(e) => set('tipo_amazonia', e.target.value)}>
                   {TIPOS_AMAZONIA.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}

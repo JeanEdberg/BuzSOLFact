@@ -565,6 +565,7 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
         total: paginador.total ?? (paginador.data?.length ?? 0),
         resumen: json?.resumen ?? { pendientes: 0, total: 0 },
         alertas: json?.alertas ?? null,
+        fuente: json?.fuente ?? null,
       };
     },
 
@@ -587,6 +588,22 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       const response = await request('/v1/notificaciones/sincronizar', {
         method: 'POST',
         body: JSON.stringify({ company_id: companyId }),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
+    // Configura la fuente real del buzón por empresa (endpoint SUNAT/SUNAFIL y
+    // token). El token vacío conserva el valor actual.
+    async configurarFuenteBuzon({ companyId, sunatEndpoint, sunafilEndpoint, token } = {}) {
+      const response = await request('/v1/notificaciones/fuente', {
+        method: 'POST',
+        body: JSON.stringify({
+          company_id: companyId,
+          buzon_sunat_endpoint: sunatEndpoint ?? '',
+          buzon_sunafil_endpoint: sunafilEndpoint ?? '',
+          buzon_token: token ?? '',
+        }),
       });
       const json = await response.json();
       return json?.data ?? json;
