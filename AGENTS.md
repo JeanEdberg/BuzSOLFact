@@ -74,6 +74,28 @@ Reglas que no romper:
   de probar: las tablas `daily_summaries`, `retentions` y `voided_documents`
   pueden estar pendientes y el panel devuelve 500 (`no such table`).
 
+## Base de datos Supabase (PostgreSQL)
+
+El backend usa SQLite/MySQL en desarrollo. Para apuntar a Supabase (PostgreSQL):
+
+1. En el backend, instala la extensión de PHP: `sudo apt-get install -y php8.4-pgsql` (verifica con `php -m | grep pgsql`).
+2. Copia la cadena de conexión de Supabase (Project Settings → Database). En `.env` del backend:
+
+   ```
+   DB_CONNECTION=pgsql
+   DB_HOST=aws-0-<region>.pooler.supabase.com   # Session pooler o conexión directa
+   DB_PORT=5432
+   DB_DATABASE=postgres
+   DB_USERNAME=postgres.<project-ref>
+   DB_PASSWORD=<tu-password>
+   DB_SSLMODE=require
+   ```
+
+3. Prepara el esquema y los datos base: `php artisan migrate:fresh --seed`.
+   Deja 25 regiones, 196 provincias, 1874 distritos y la empresa INMOA.
+
+Notas de portabilidad ya resueltas: `UbiDistritoSeeder` solo desactiva las claves foráneas en SQLite/MySQL, y `UbiProvinciasSeeder` incluye la provincia 080400 (Calca) que antes faltaba y rompía el sembrado en PostgreSQL. El `sslmode` se lee de `DB_SSLMODE`.
+
 ## Convenciones
 
 - El cliente de la API (`src/lib/api.js`) asume el contrato real del backend:
