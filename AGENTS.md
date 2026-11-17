@@ -297,10 +297,12 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   `DELETE /clear`, `POST /copy`; además `GET /gre-credentials/defaults/{modo}`.
 - `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
   `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`,
-  `POST /{id}/adjuntos` (multipart `archivo` PDF/imagen) y
+  `POST /fuente` (configura la fuente del buzón), `POST /{id}/adjuntos`
+  (multipart `archivo` PDF/imagen) y
   `GET /{id}/adjunto` (descarga). El listado añade `alertas.certificado` con
   `tiene`, `vencido`, `por_vencer`, `vence_en` y `dias_restantes`; el panel
-  pinta un aviso cuando el certificado venció o está por vencer.
+  pinta un aviso cuando el certificado venció o está por vencer. También añade
+  `fuente` (`sunat`, `sunafil`, `configurado`, `token`, `origenes`).
 - `compras` (recibidos): `GET /` (paginador), `POST /` (alta manual),
   `POST /importar-xml` (multipart `company_id` + `xml`), `GET /{id}`,
   `DELETE /{id}`. Se deduplica por `(empresa, proveedor, tipo, serie, correlativo)`
@@ -346,9 +348,14 @@ Reglas del backend que conviene no romper:
   actualizar, si llegan vacíos o nulos el backend **conserva** el valor previo
   (Laravel convierte `""` en `null`). La UI nunca muestra el valor actual.
 - El buzón se deduplica por `(company_id, entidad, codigo)`. SUNAT/SUNAFIL no
-  publican API REST pública del buzón: la sincronización usa un endpoint
-  configurable (`SUNAT_BUZON_ENDPOINT`, `SUNAFIL_BUZON_ENDPOINT`); sin él, el
-  alta manual sigue funcionando.
+  publican API REST pública del buzón: la fuente se resuelve **por empresa**
+  (columnas `buzon_sunat_endpoint`, `buzon_sunafil_endpoint`, `buzon_token`) y,
+  si están vacías, cae a la global del entorno (`SUNAT_BUZON_ENDPOINT`,
+  `SUNAFIL_BUZON_ENDPOINT`, `BUZON_TOKEN`). El endpoint configurado debe
+  responder `{ "data": [ {entidad, codigo, asunto, fecha, ...} ] }`; el backend
+  lo consulta con el `ruc` y el `usuario_sol` de la empresa y manda el token como
+  `Bearer`. Sin ninguna fuente, la sincronización no falla y el alta manual sigue
+  disponible. La PWA lo configura en el botón *Fuente* del panel del buzón.
 - Autorización por empresa: `User::canAccessCompany($id)` (el super admin accede
   a todas). Filtrar por `company_id` cuando se envía; si no, la empresa del usuario.
 
