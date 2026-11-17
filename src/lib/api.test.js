@@ -52,6 +52,20 @@ describe('api.register', () => {
   });
 });
 
+describe('api.consultarDocumento', () => {
+  it('envía tipo_documento y numero_documento como query', async () => {
+    const llamadas = mockFetch([
+      { disponible: true, encontrado: true, mensaje: 'Datos encontrados.', data: { razon_social: 'X' } },
+    ]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const res = await api.consultarDocumento({ tipoDocumento: 6, numeroDocumento: '20614684772' });
+
+    expect(res.encontrado).toBe(true);
+    expect(llamadas[0].url).toBe('/api/v1/consulta-documento?tipo_documento=6&numero_documento=20614684772');
+  });
+});
+
 describe('api.enviarSunat', () => {
   it('sin async no envía cuerpo', async () => {
     const llamadas = mockFetch([{ data: { id: 1 } }]);

@@ -386,8 +386,50 @@ function ConexionPanel({ onConectar, onRegistrar, conectado, cargando, error, to
     clave_sol: '',
   });
   const [certificado, setCertificado] = useState(null);
+  const [consultandoRuc, setConsultandoRuc] = useState(false);
+  const [avisoRuc, setAvisoRuc] = useState(null);
 
   const setCampo = (campo) => (e) => setForm((f) => ({ ...f, [campo]: e.target.value }));
+
+  // Al completar los 11 dígitos del RUC se consulta el padrón y se rellenan
+  // los datos de la empresa. El usuario puede corregir cualquier campo después.
+  async function consultarRuc(ruc) {
+    const numero = String(ruc ?? form.ruc).replace(/\D/g, '');
+    if (numero.length !== 11) {
+      setAvisoRuc({ tipo: 'error', texto: 'El RUC debe tener 11 dígitos.' });
+      return;
+    }
+
+    setConsultandoRuc(true);
+    setAvisoRuc(null);
+    try {
+      const res = await api.consultarDocumento({ tipoDocumento: 6, numeroDocumento: numero });
+      if (res?.encontrado && res.data) {
+        setForm((f) => ({
+          ...f,
+          razon_social: res.data.razon_social || f.razon_social,
+          direccion: res.data.direccion || f.direccion,
+          ubigeo: res.data.ubigeo || f.ubigeo,
+          distrito: res.data.distrito || f.distrito,
+          provincia: res.data.provincia || f.provincia,
+          departamento: res.data.departamento || f.departamento,
+        }));
+        setAvisoRuc({ tipo: 'ok', texto: `Datos encontrados: ${res.data.razon_social}.` });
+      } else {
+        setAvisoRuc({ tipo: 'error', texto: res?.mensaje || 'No se encontró el RUC. Ingresa los datos a mano.' });
+      }
+    } catch (error) {
+      setAvisoRuc({ tipo: 'error', texto: `No se pudo consultar el RUC: ${error.message}` });
+    } finally {
+      setConsultandoRuc(false);
+    }
+  }
+
+  function onRucChange(e) {
+    const valor = e.target.value.replace(/\D/g, '').slice(0, 11);
+    setForm((f) => ({ ...f, ruc: valor }));
+    if (valor.length === 11) consultarRuc(valor);
+  }
 
   function registrar() {
     const payload = { email, password, ...form };
@@ -460,7 +502,24 @@ function ConexionPanel({ onConectar, onRegistrar, conectado, cargando, error, to
               </div>
               <div>
                 <label className="block text-xs text-slate-400 mb-1">RUC (11 dígitos)</label>
-                <input value={form.ruc} onChange={setCampo('ruc')} maxLength={11} className={inputCls} />
+                <div className="relative">
+                  <input
+                    value={form.ruc}
+                    onChange={onRucChange}
+                    onBlur={() => { if (form.ruc.length === 11) consultarRuc(form.ruc); }}
+                    maxLength={11}
+                    inputMode="numeric"
+                    className={inputCls}
+                  />
+                  {consultandoRuc && (
+                    <Loader2 size={14} className="animate-spin absolute right-3 top-1/2 -translate-y-1/2 text-blue-400" />
+                  )}
+                </div>
+                {avisoRuc && (
+                  <p className={`mt-1 text-xs ${avisoRuc.tipo === 'ok' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {avisoRuc.texto}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-xs text-slate-400 mb-1">Correo</label>
@@ -544,6 +603,7 @@ export default function App() {
   const [fuente, setFuente] = useState('demo');
   const [token, setToken] = useState(null);
   const [companyId, setCompanyId] = useState(null);
+  const [empresas, setEmpresas] = useState([]);
   const [cargando, setCargando] = useState(false);
   const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
@@ -582,7 +642,21 @@ export default function App() {
   // Carga los datos del backend una vez que hay token (login o registro).
   async function cargarTrasSesion(sesion) {
     setToken(sesion.access_token ?? sesion.token ?? null);
-    const idEmpresa = sesion.user?.company_id ?? null;
+
+    // El super administrador no trae empresa asignada: se listan las empresas y
+    // se deja una seleccionada para poder emitir y consultar datos.
+    let idEmpresa = sesion.user?.company_id ?? null;
+    if (!idEmpresa) {
+      try {
+        const empresas = await api.listCompanies();
+        setEmpresas(empresas);
+        idEmpresa = empresas[0]?.id ?? null;
+      } catch {
+        setEmpresas([]);
+      }
+    } else {
+      setEmpresas([]);
+    }
     setCompanyId(idEmpresa);
 
     const emitidos = await api.listVentas();
@@ -600,12 +674,25 @@ export default function App() {
     setAviso(`Conectado. ${emitidos.length} comprobante(s) emitido(s) y ${recibidos.length} recibido(s) cargado(s) desde la API.`);
   }
 
+  // Cambia la empresa activa del super administrador y recarga sus datos.
+  async function cambiarEmpresa(id) {
+    const nuevo = Number(id);
+    setCompanyId(nuevo || null);
+    try {
+      const res = await api.listCompras({ companyId: nuevo });
+      setCompras((res.items ?? []).map((d) => mapCompra(d)));
+    } catch (error) {
+      setErrorConexion(error.message);
+    }
+  }
+
   function volverADemo() {
     setVentas(comprobantesVenta);
     setCompras(comprobantesCompra);
     setFuente('demo');
     setToken(null);
     setCompanyId(null);
+    setEmpresas([]);
     api.setToken(null);
     setAviso('Se restauraron los datos de demostración.');
   }
@@ -738,11 +825,29 @@ export default function App() {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6">
+        <header className="h-16 bg-slate-800 border-b border-slate-700 flex items-center justify-between px-6 gap-4">
           <h2 className="text-lg font-semibold capitalize">{activeTab.replace('-', ' ')}</h2>
-          <span className={`text-xs px-3 py-1 rounded-full border ${fuente === 'api' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-600/40 text-slate-300 border-slate-600'}`}>
-            {fuente === 'api' ? 'API conectada' : 'Datos demo'}
-          </span>
+          <div className="flex items-center gap-3">
+            {fuente === 'api' && empresas.length > 0 && (
+              <label className="flex items-center gap-2 text-xs text-slate-400">
+                Empresa
+                <select
+                  value={companyId ?? ''}
+                  onChange={(e) => cambiarEmpresa(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-sm text-white focus:outline-none focus:border-blue-500"
+                >
+                  {empresas.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.razon_social} ({c.ruc})
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <span className={`text-xs px-3 py-1 rounded-full border ${fuente === 'api' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-600/40 text-slate-300 border-slate-600'}`}>
+              {fuente === 'api' ? 'API conectada' : 'Datos demo'}
+            </span>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">

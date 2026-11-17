@@ -37,6 +37,28 @@ Para ver la app contra el backend real:
 3. En la pestaña **Conexión API** entrar con un usuario del backend. El seeder
    crea `admin@sunatapi.com` / `admin123456` (super admin),
    `company@sunatapi.com` / `company123456` y `api@sunatapi.com` / `api123456`.
+   Para la empresa real INMOA, `InmoaSeeder` crea `jguevara91@inmoa.com`
+   (super admin) e `inmoalogisticaysoluciones@gmail.com` (admin de INMOA); las
+   contraseñas se leen de `INMOA_SUPERADMIN_PASSWORD` / `INMOA_ADMIN_PASSWORD`
+   en el `.env` del backend. `php artisan migrate:fresh --seed` deja todo listo.
+
+## Autocompletado por RUC/DNI
+
+- La PWA consulta el padrón al escribir los 11 dígitos del RUC (pestaña
+  Conexión API → Crear empresa) y rellena razón social, dirección y ubigeo.
+- Endpoint backend `GET /api/v1/consulta-documento?tipo_documento=6&numero_documento=…`
+  (tipo 6 = RUC, tipo 1 = DNI). Devuelve `{ disponible, encontrado, mensaje, data }`.
+- Es **público** (el alta de empresa ocurre antes del login) y va con
+  `throttle:30,1`. Usa Decolecta (`DECOLECTA_TOKEN`); sin token responde
+  `disponible: false` y el formulario pide los datos a mano.
+
+## Aislamiento por empresa
+
+- `app/Http/Controllers/Concerns/ScopesByCompany.php` limita las consultas a la
+  empresa del usuario. El `super_admin` ve todas; cualquier otro rol solo la
+  suya, aunque pida otro `company_id`. Al aplicar el trait a un modelo cuya
+  clave es `id` (no `company_id`), pasar la columna: `scopeToUserCompany($q, $r, 'id')`.
+
 
 Reglas que no romper:
 
