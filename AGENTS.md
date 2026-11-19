@@ -8,7 +8,9 @@ SUNAT/SUNAFIL, descarga XML/PDF/CDR y Libros Electrónicos).
 ## Stack
 
 - Vite 5 + React 18 + Tailwind 3 (JavaScript, sin TypeScript).
-- Tests con Vitest.
+- Tests con Vitest. Los de `src/lib/*.test.js` cubren la lógica; los de UI
+  (`.test.jsx`) usan `jsdom` + Testing Library con `// @vitest-environment jsdom`
+  y stubbean `fetch`, nunca el componente.
 - El backend de facturación es externo (Laravel 12 + Greenter) y se consume vía
   `VITE_API_URL`; ver `src/lib/api.js` para el contrato de endpoints.
 

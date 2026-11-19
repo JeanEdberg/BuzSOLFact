@@ -1,14 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createApi } from './api.js';
 
+// Cada respuesta puede ser el cuerpo o `{ status, body }` para simular errores.
 function mockFetch(respuestas) {
   const llamadas = [];
   globalThis.fetch = vi.fn(async (url, options) => {
     llamadas.push({ url, options });
-    const cuerpo = respuestas.shift() ?? {};
+    const siguiente = respuestas.shift() ?? {};
+    const esError = 'status' in siguiente && 'body' in siguiente;
+    const status = esError ? siguiente.status : 200;
+    const cuerpo = esError ? siguiente.body : siguiente;
     return {
-      ok: true,
-      status: 200,
+      ok: status >= 200 && status < 300,
+      status,
       json: async () => cuerpo,
       text: async () => JSON.stringify(cuerpo),
       headers: { get: () => null },
@@ -139,7 +143,12 @@ describe('api.configurarFuenteBuzon', () => {
 
 describe('api.probarFuenteBuzon', () => {
   it('devuelve el motivo real cuando la fuente rechaza la conexión', async () => {
-    mockFetch([{ conectado: false, message: 'SUNAT rechazó las credenciales SOL.' }]);
+    mockFetch([
+      {
+        status: 502,
+        body: { success: false, conectado: false, message: 'SUNAT rechazó las credenciales SOL.' },
+      },
+    ]);
     const api = createApi({ baseUrl: '/api' });
 
     const resultado = await api.probarFuenteBuzon({ companyId: 7, entidad: 'SUNAT' });

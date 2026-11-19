@@ -620,17 +620,23 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
     },
 
     // Prueba la fuente sin importar nada y devuelve el motivo real del fallo
-    // (Clave SOL rechazada, captcha, endpoint caído…).
+    // (Clave SOL rechazada, captcha, endpoint caído…). El backend responde 502
+    // con `message`, así que se lee el cuerpo en vez del error genérico del helper.
     async probarFuenteBuzon({ companyId, entidad = 'SUNAT' } = {}) {
-      const response = await request('/v1/notificaciones/probar-fuente', {
+      const response = await fetch(`${baseUrl}/v1/notificaciones/probar-fuente`, {
         method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({ company_id: companyId, entidad }),
       });
       const json = await response.json().catch(() => ({}));
       return {
         conectado: Boolean(json?.conectado),
         total: json?.total ?? 0,
-        message: json?.message ?? '',
+        message: json?.message || `Error ${response.status} al probar la fuente.`,
       };
     },
 
