@@ -593,9 +593,17 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
-    // Configura la fuente real del buzón por empresa (endpoint SUNAT/SUNAFIL y
-    // token). El token vacío conserva el valor actual.
-    async configurarFuenteBuzon({ companyId, sunatEndpoint, sunafilEndpoint, token } = {}) {
+    // Configura la fuente real del buzón por empresa (endpoint SUNAT/SUNAFIL,
+    // token y Clave SOL con la que el puente autentica contra SUNAT). Los
+    // secretos vacíos conservan el valor actual.
+    async configurarFuenteBuzon({
+      companyId,
+      sunatEndpoint,
+      sunafilEndpoint,
+      token,
+      usuarioSol,
+      claveSol,
+    } = {}) {
       const response = await request('/v1/notificaciones/fuente', {
         method: 'POST',
         body: JSON.stringify({
@@ -603,10 +611,27 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
           buzon_sunat_endpoint: sunatEndpoint ?? '',
           buzon_sunafil_endpoint: sunafilEndpoint ?? '',
           buzon_token: token ?? '',
+          usuario_sol: usuarioSol ?? '',
+          clave_sol: claveSol ?? '',
         }),
       });
       const json = await response.json();
       return json?.data ?? json;
+    },
+
+    // Prueba la fuente sin importar nada y devuelve el motivo real del fallo
+    // (Clave SOL rechazada, captcha, endpoint caído…).
+    async probarFuenteBuzon({ companyId, entidad = 'SUNAT' } = {}) {
+      const response = await request('/v1/notificaciones/probar-fuente', {
+        method: 'POST',
+        body: JSON.stringify({ company_id: companyId, entidad }),
+      });
+      const json = await response.json().catch(() => ({}));
+      return {
+        conectado: Boolean(json?.conectado),
+        total: json?.total ?? 0,
+        message: json?.message ?? '',
+      };
     },
 
     // Adjunta (o reemplaza) el expediente PDF/imagen de una notificación.

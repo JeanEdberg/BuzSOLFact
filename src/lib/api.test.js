@@ -109,7 +109,7 @@ describe('api.listNotificaciones', () => {
 });
 
 describe('api.configurarFuenteBuzon', () => {
-  it('envía endpoints y token, y devuelve el estado', async () => {
+  it('envía endpoints, token y Clave SOL, y devuelve el estado', async () => {
     const llamadas = mockFetch([
       { data: { sunat: true, sunafil: false, configurado: true, token: true, origenes: ['empresa'] } },
     ]);
@@ -119,6 +119,8 @@ describe('api.configurarFuenteBuzon', () => {
       companyId: 7,
       sunatEndpoint: 'https://proveedor.test/buzon',
       token: 'tok',
+      usuarioSol: 'MODDATOS',
+      claveSol: 'clave-real',
     });
 
     expect(llamadas[0].url).toBe('/api/v1/notificaciones/fuente');
@@ -128,7 +130,31 @@ describe('api.configurarFuenteBuzon', () => {
       buzon_sunat_endpoint: 'https://proveedor.test/buzon',
       buzon_sunafil_endpoint: '',
       buzon_token: 'tok',
+      usuario_sol: 'MODDATOS',
+      clave_sol: 'clave-real',
     });
     expect(estado.configurado).toBe(true);
+  });
+});
+
+describe('api.probarFuenteBuzon', () => {
+  it('devuelve el motivo real cuando la fuente rechaza la conexión', async () => {
+    mockFetch([{ conectado: false, message: 'SUNAT rechazó las credenciales SOL.' }]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const resultado = await api.probarFuenteBuzon({ companyId: 7, entidad: 'SUNAT' });
+
+    expect(resultado.conectado).toBe(false);
+    expect(resultado.message).toBe('SUNAT rechazó las credenciales SOL.');
+  });
+
+  it('informa cuántas notificaciones ve cuando conecta', async () => {
+    const llamadas = mockFetch([{ conectado: true, total: 3, message: 'Conexión correcta.' }]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const resultado = await api.probarFuenteBuzon({ companyId: 7 });
+
+    expect(llamadas[0].url).toBe('/api/v1/notificaciones/probar-fuente');
+    expect(resultado).toMatchObject({ conectado: true, total: 3 });
   });
 });

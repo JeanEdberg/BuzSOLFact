@@ -297,12 +297,13 @@ Endpoints que consume la PWA, todos bajo `auth:sanctum` y prefijo `/api/v1`:
   `DELETE /clear`, `POST /copy`; además `GET /gre-credentials/defaults/{modo}`.
 - `notificaciones` (buzón): `GET /` (paginador Laravel en `data` + `resumen`),
   `POST /` (alta manual), `POST /{id}/marcar-leida`, `POST /sincronizar`,
-  `POST /fuente` (configura la fuente del buzón), `POST /{id}/adjuntos`
+  `POST /fuente` (configura fuente + credenciales SOL), `POST /probar-fuente`
+  (valida la conexión sin importar), `POST /{id}/adjuntos`
   (multipart `archivo` PDF/imagen) y
   `GET /{id}/adjunto` (descarga). El listado añade `alertas.certificado` con
   `tiene`, `vencido`, `por_vencer`, `vence_en` y `dias_restantes`; el panel
   pinta un aviso cuando el certificado venció o está por vencer. También añade
-  `fuente` (`sunat`, `sunafil`, `configurado`, `token`, `origenes`).
+  `fuente` (`sunat`, `sunafil`, `configurado`, `token`, `sol`, `origenes`).
 - `compras` (recibidos): `GET /` (paginador), `POST /` (alta manual),
   `POST /importar-xml` (multipart `company_id` + `xml`), `GET /{id}`,
   `DELETE /{id}`. Se deduplica por `(empresa, proveedor, tipo, serie, correlativo)`
@@ -356,6 +357,19 @@ Reglas del backend que conviene no romper:
   lo consulta con el `ruc` y el `usuario_sol` de la empresa y manda el token como
   `Bearer`. Sin ninguna fuente, la sincronización no falla y el alta manual sigue
   disponible. La PWA lo configura en el botón *Fuente* del panel del buzón.
+- **El buzón usa la Clave SOL real, no un endpoint genérico.** El acceso al
+  buzón exige login en el Menú SOL, así que la fuente es el puente
+  `tools/buzon-bridge/sol_buzon.py` del repo del backend: hace el OAuth2 de
+  SUNAT con la Clave SOL de la empresa y devuelve el buzón como JSON. El backend
+  manda la clave en la cabecera `X-SOL-Clave` (nunca en la URL, para no dejarla
+  en logs) junto con `Authorization: Bearer <BUZON_TOKEN>`. `fuente.sol` del
+  listado indica si hay usuario y clave guardados; si falta, el panel avisa de
+  que sincronizar no traerá nada. *Probar conexión* llama a `/probar-fuente` y
+  muestra el motivo real (clave rechazada, captcha, puente caído). El puente
+  separa el mensaje para el usuario (`error`) del texto crudo de SUNAT
+  (`detalle`). Las credenciales `MODDATOS`/`moddatos` del seeder son de
+  **prueba** y SUNAT las rechaza en producción: la clave real se guarda desde
+  el panel y nunca se muestra de vuelta.
 - Autorización por empresa: `User::canAccessCompany($id)` (el super admin accede
   a todas). Filtrar por `company_id` cuando se envía; si no, la empresa del usuario.
 

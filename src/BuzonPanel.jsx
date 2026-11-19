@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Bell, RefreshCw, Loader2, AlertCircle, CheckCircle2, MailOpen,
   Plus, Building2, Paperclip, ExternalLink, X, Upload, Download, ShieldAlert, Plug,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from './lib/api.js';
 import { notificaciones as demoNotificaciones } from './lib/sampleData.js';
@@ -34,7 +35,9 @@ export default function BuzonPanel({ conectado }) {
   const [mensaje, setMensaje] = useState(null);
   const [fuente, setFuente] = useState(null);
   const [mostrarFuente, setMostrarFuente] = useState(false);
-  const [fuenteForm, setFuenteForm] = useState({ sunat: '', sunafil: '', token: '' });
+  const [fuenteForm, setFuenteForm] = useState({ sunat: '', sunafil: '', token: '', usuarioSol: '', claveSol: '' });
+  const [probandoFuente, setProbandoFuente] = useState(false);
+  const [pruebaFuente, setPruebaFuente] = useState(null);
   const [guardandoFuente, setGuardandoFuente] = useState(false);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [nueva, setNueva] = useState({ entidad: 'SUNAT', asunto: '', tipo: '', fecha: '', codigo: '', detalle: '', url: '' });
@@ -124,10 +127,13 @@ export default function BuzonPanel({ conectado }) {
     if (!empresaId) return;
     setMensaje(null);
     const empresa = empresas.find((e) => e.id === empresaId);
+    setPruebaFuente(null);
     setFuenteForm({
       sunat: empresa?.buzon_sunat_endpoint ?? '',
       sunafil: empresa?.buzon_sunafil_endpoint ?? '',
       token: '',
+      usuarioSol: empresa?.usuario_sol ?? '',
+      claveSol: '',
     });
     setMostrarFuente(true);
   }
@@ -144,6 +150,8 @@ export default function BuzonPanel({ conectado }) {
         sunatEndpoint: fuenteForm.sunat,
         sunafilEndpoint: fuenteForm.sunafil,
         token: fuenteForm.token,
+        usuarioSol: fuenteForm.usuarioSol,
+        claveSol: fuenteForm.claveSol,
       });
       setFuente(estado);
       setMostrarFuente(false);
@@ -157,6 +165,20 @@ export default function BuzonPanel({ conectado }) {
       setError(e.message);
     } finally {
       setGuardandoFuente(false);
+    }
+  }
+
+  // Prueba la fuente guardada: devuelve el motivo real si SUNAT rechaza la clave.
+  async function probarFuente() {
+    if (!empresaId) return;
+    setProbandoFuente(true);
+    setPruebaFuente(null);
+    try {
+      setPruebaFuente(await api.probarFuenteBuzon({ companyId: empresaId, entidad: 'SUNAT' }));
+    } catch (e) {
+      setPruebaFuente({ conectado: false, message: e.message });
+    } finally {
+      setProbandoFuente(false);
     }
   }
 
@@ -314,7 +336,10 @@ export default function BuzonPanel({ conectado }) {
           <span>
             Fuente del buzón activa ({[fuente.sunat && 'SUNAT', fuente.sunafil && 'SUNAFIL'].filter(Boolean).join(' y ')}
             {fuente.origenes?.includes('empresa') ? ', configurada por empresa' : ''}
-            {fuente.origenes?.includes('entorno') ? ', por entorno' : ''}). Pulsa Sincronizar para traer las notificaciones.
+            {fuente.origenes?.includes('entorno') ? ', por entorno' : ''}).
+            {fuente.sol
+              ? ' Pulsa Sincronizar para traer las notificaciones.'
+              : ' Falta la Clave SOL: sin ella el puente no puede entrar al Menú SOL, así que la sincronización no traerá nada.'}
           </span>
         </div>
       )}
@@ -348,7 +373,50 @@ export default function BuzonPanel({ conectado }) {
             value={fuenteForm.token}
             onChange={(e) => setFuenteForm({ ...fuenteForm, token: e.target.value })}
           />
-          <div className="flex justify-end">
+
+          <div className="border-t border-slate-700 pt-3 space-y-2">
+            <p className="text-xs text-slate-400">
+              <strong className="text-slate-300">Clave SOL</strong>: el puente la usa para entrar al Menú SOL
+              y leer el buzón. Sin Clave SOL válida la sincronización no trae nada.
+            </p>
+            <input
+              className={input}
+              placeholder="Usuario SOL (secundario)"
+              value={fuenteForm.usuarioSol}
+              onChange={(e) => setFuenteForm({ ...fuenteForm, usuarioSol: e.target.value })}
+            />
+            <input
+              className={input}
+              type="password"
+              autoComplete="new-password"
+              placeholder={fuente?.sol ? 'Clave SOL (dejar vacío para conservar la actual)' : 'Clave SOL'}
+              value={fuenteForm.claveSol}
+              onChange={(e) => setFuenteForm({ ...fuenteForm, claveSol: e.target.value })}
+            />
+          </div>
+
+          {pruebaFuente && (
+            <div
+              className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 border ${
+                pruebaFuente.conectado
+                  ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30'
+                  : 'text-amber-300 bg-amber-500/10 border-amber-500/30'
+              }`}
+            >
+              {pruebaFuente.conectado ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertTriangle size={14} className="mt-0.5 shrink-0" />}
+              <span className="break-words">{pruebaFuente.message}</span>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={probarFuente}
+              disabled={probandoFuente || !empresaId}
+              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
+            >
+              {probandoFuente ? <Loader2 size={15} className="animate-spin" /> : <Plug size={15} />} Probar conexión
+            </button>
             <button type="submit" disabled={guardandoFuente} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40">
               {guardandoFuente ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Guardar fuente
             </button>
