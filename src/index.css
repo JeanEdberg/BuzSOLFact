@@ -6,3 +6,35 @@ html, body, #root {
   height: 100%;
   margin: 0;
 }
+
+/* El fondo vive aquí y no en el contenedor de React: así no aparece una zona
+   blanca cuando la vista es más alta que el viewport. */
+html {
+  color-scheme: dark;
+  background-color: #0f172a;
+}
+
+body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+  overscroll-behavior: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #475569 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #475569;
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-track {
+  background-color: transparent;
+}
