@@ -9,6 +9,11 @@ import { notificaciones as demoNotificaciones } from './lib/sampleData.js';
 
 const input = 'w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500';
 
+const ENTIDADES = [
+  { id: 'SUNAT', nombre: 'SUNAT', descripcion: 'Buzón electrónico SUNAT (SIE): notificaciones y mensajes tributarios.' },
+  { id: 'SUNAFIL', nombre: 'SUNAFIL', descripcion: 'Casilla electrónica SUNAFIL: notificaciones laborales e inspecciones.' },
+];
+
 const colorEntidad = (entidad) =>
   entidad === 'SUNAT'
     ? 'bg-amber-500/20 text-amber-400'
@@ -28,7 +33,8 @@ export default function BuzonPanel({ conectado }) {
   const [items, setItems] = useState([]);
   const [resumen, setResumen] = useState({ pendientes: 0, total: 0 });
   const [alertaCert, setAlertaCert] = useState(null);
-  const [entidad, setEntidad] = useState('');
+  const [entidad, setEntidad] = useState('SUNAT');
+  const [conteo, setConteo] = useState({ SUNAT: 0, SUNAFIL: 0 });
   const [cargando, setCargando] = useState(false);
   const [sincronizando, setSincronizando] = useState(false);
   const [error, setError] = useState(null);
@@ -69,6 +75,7 @@ export default function BuzonPanel({ conectado }) {
       });
       setItems(lista);
       setResumen(r);
+      setConteo((prev) => ({ ...prev, ...(r?.por_entidad ?? {}) }));
       setAlertaCert(alertas?.certificado ?? null);
       setFuente(f);
     } catch (e) {
@@ -82,7 +89,7 @@ export default function BuzonPanel({ conectado }) {
     if (!conectado) return;
     (async () => {
       const lista = await cargarEmpresas();
-      if (lista.length) cargarNotificaciones(lista[0].id, '');
+      if (lista.length) cargarNotificaciones(lista[0].id, 'SUNAT');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conectado]);
@@ -93,18 +100,18 @@ export default function BuzonPanel({ conectado }) {
   }
 
   async function sincronizar() {
-    if (!empresaId) return;
+    if (!empresaId || !entidad) return;
     setSincronizando(true);
     setError(null);
     setMensaje(null);
     try {
-      const r = await api.sincronizarBuzon(empresaId);
-      await cargarNotificaciones(empresaId);
+      const r = await api.sincronizarBuzon(empresaId, entidad);
+      await cargarNotificaciones(empresaId, entidad);
       const importadas = r?.importadas ?? 0;
       setMensaje(
         importadas > 0
-          ? `Sincronizado: ${importadas} notificación(es) nueva(s).`
-          : 'Buzón sincronizado. No hay notificaciones nuevas (o la entidad no tiene endpoint configurado).',
+          ? `Buzón ${entidad}: ${importadas} notificación(es) nueva(s).`
+          : `Buzón ${entidad} sincronizado. No hay notificaciones nuevas (o no tiene endpoint configurado).`,
       );
     } catch (e) {
       setError(e.message);
@@ -261,21 +268,12 @@ export default function BuzonPanel({ conectado }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="text-xl font-bold flex items-center gap-2"><Bell size={18} /> Buzón SUNAT / SUNAFIL</h3>
+          <h3 className="text-xl font-bold flex items-center gap-2"><Bell size={18} /> Buzón electrónico</h3>
           <p className="text-xs text-slate-400 mt-1">
             {resumen.pendientes} pendiente(s) · {resumen.total} en total
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select
-            className={`${input} w-auto`}
-            value={entidad}
-            onChange={(e) => { setEntidad(e.target.value); cargarNotificaciones(empresaId, e.target.value); }}
-          >
-            <option value="">Todas las entidades</option>
-            <option value="SUNAT">SUNAT</option>
-            <option value="SUNAFIL">SUNAFIL</option>
-          </select>
           <button
             onClick={() => setMostrarForm((v) => !v)}
             className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm"
@@ -291,12 +289,32 @@ export default function BuzonPanel({ conectado }) {
           </button>
           <button
             onClick={sincronizar}
-            disabled={sincronizando || !empresaId}
+            disabled={sincronizando || !empresaId || !entidad}
             className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-40"
+            title={!entidad ? 'Elige un buzón (SUNAT o SUNAFIL) para sincronizar' : `Sincronizar el buzón de ${entidad}`}
           >
             {sincronizando ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Sincronizar
           </button>
         </div>
+      </div>
+
+      {/* Cada entidad es un buzón distinto: se consultan y sincronizan por separado. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {ENTIDADES.map(({ id, nombre, descripcion }) => {
+          const cuenta = conteo[id] ?? 0;
+          const activo = entidad === id;
+          return (
+            <button
+              key={id}
+              onClick={() => { setEntidad(id); cargarNotificaciones(empresaId, id); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm border transition ${activo ? 'border-blue-500 bg-blue-500/10 text-white' : 'border-slate-700 text-slate-300 hover:border-slate-500'}`}
+              title={descripcion}
+            >
+              <span className={`text-xs px-2 py-0.5 rounded font-semibold ${colorEntidad(id)}`}>{nombre}</span>
+              <span className="text-xs text-slate-400">{cuenta} {cuenta === 1 ? 'aviso' : 'avisos'}</span>
+            </button>
+          );
+        })}
       </div>
 
       {empresas.length > 0 && (

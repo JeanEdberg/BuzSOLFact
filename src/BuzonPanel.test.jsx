@@ -71,3 +71,58 @@ describe('BuzonPanel · fuente del buzón', () => {
     await waitFor(() => expect(screen.getByText(/Falta la Clave SOL/)).toBeTruthy());
   });
 });
+
+describe('BuzonPanel · buzones independientes', () => {
+  const conConteo = {
+    ...listado,
+    resumen: { pendientes: 31, total: 51, por_entidad: { SUNAT: 51, SUNAFIL: 4 } },
+  };
+
+  function stubPorEntidad(espia) {
+    globalThis.fetch = vi.fn(async (url, opciones) => {
+      if (String(url).includes('/companies')) {
+        return { ok: true, status: 200, json: async () => ({ data: [empresa] }), text: async () => '' };
+      }
+      if (String(url).includes('/sincronizar')) espia(opciones);
+      return { ok: true, status: 200, json: async () => conConteo, text: async () => '' };
+    });
+  }
+
+  it('muestra un contador propio por buzón', async () => {
+    stubPorEntidad(() => {});
+    render(<BuzonPanel conectado />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /SUNAT 51 avisos/ })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /SUNAFIL 4 avisos/ })).toBeTruthy();
+    });
+  });
+
+  it('sincroniza solo el buzón elegido, no los dos', async () => {
+    const cuerpos = [];
+    stubPorEntidad((opciones) => cuerpos.push(JSON.parse(opciones.body)));
+    render(<BuzonPanel conectado />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL 4 avisos/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Sincronizar/ }));
+
+    await waitFor(() => expect(cuerpos.length).toBe(1));
+    expect(cuerpos[0]).toEqual({ company_id: 7, entidad: 'SUNAFIL' });
+  });
+
+  it('al abrir consulta solo el buzón de SUNAT por defecto', async () => {
+    const consultas = [];
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/companies')) {
+        return { ok: true, status: 200, json: async () => ({ data: [empresa] }), text: async () => '' };
+      }
+      consultas.push(String(url));
+      return { ok: true, status: 200, json: async () => conConteo, text: async () => '' };
+    });
+
+    render(<BuzonPanel conectado />);
+
+    await waitFor(() => expect(consultas.length).toBeGreaterThan(0));
+    expect(consultas[0]).toContain('entidad=SUNAT');
+  });
+});

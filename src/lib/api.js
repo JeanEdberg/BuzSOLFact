@@ -584,10 +584,10 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
-    async sincronizarBuzon(companyId) {
+    async sincronizarBuzon(companyId, entidad) {
       const response = await request('/v1/notificaciones/sincronizar', {
         method: 'POST',
-        body: JSON.stringify({ company_id: companyId }),
+        body: JSON.stringify({ company_id: companyId, ...(entidad ? { entidad } : {}) }),
       });
       const json = await response.json();
       return json?.data ?? json;
