@@ -35,7 +35,7 @@ async function mensajeDeError(response, path) {
   return `Error ${response.status} en ${path}${texto ? `: ${texto.slice(0, 200)}` : ''}`;
 }
 
-export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
+export function createApi({ baseUrl = BASE_URL, token = null, onSesionExpirada = null } = {}) {
   let authToken = token;
 
   async function request(path, options = {}) {
@@ -48,6 +48,13 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
 
     const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
     if (!response.ok) {
+      // Un 401 con token en mano significa que el backend invalidó la sesión
+      // (cuenta desactivada o token revocado). Un 401 sin token es un login
+      // fallido y lo maneja la pantalla de acceso.
+      if (response.status === 401 && authToken && onSesionExpirada) {
+        authToken = null;
+        onSesionExpirada();
+      }
       throw new SunatApiError(await mensajeDeError(response, path), response.status);
     }
     return response;
@@ -814,4 +821,15 @@ export function downloadBlob(bytes, filename, type = 'application/octet-stream')
   saveBlob(new Blob([bytes], { type }), filename);
 }
 
-export const api = createApi();
+// El singleton se crea al importar el módulo, antes de que exista ningún
+// componente: la app registra su manejador con `api.alSesionExpirada(...)`.
+let manejadorSesion = null;
+
+export const api = createApi({
+  onSesionExpirada: () => manejadorSesion?.(),
+});
+
+api.alSesionExpirada = (fn) => {
+  manejadorSesion = fn;
+  return api;
+};

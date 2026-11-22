@@ -256,3 +256,49 @@ describe('api.descargarAdjuntoNotificacion', () => {
     expect(llamadas[0].url).toBe('https://api.test/v1/notificaciones/7/adjunto');
   });
 });
+
+describe('sesión expirada (401 con token)', () => {
+  it('avisa y descarta el token cuando el backend corta la sesión', async () => {
+    mockFetch([
+      { access_token: 'tok-viejo' },
+      { status: 401, body: { message: 'Tu cuenta está desactivada.', status: 'error' } },
+      { data: [] },
+    ]);
+    const alSesionExpirada = vi.fn();
+    const api = createApi({ baseUrl: '/api', onSesionExpirada: alSesionExpirada });
+
+    await api.login({ email: 'a@b.com', password: 'x' });
+    await expect(api.me()).rejects.toThrow('Tu cuenta está desactivada.');
+    expect(alSesionExpirada).toHaveBeenCalledTimes(1);
+
+    // El token ya no se envía: no se insiste con una credencial muerta.
+    await api.listVentas();
+    const ultima = globalThis.fetch.mock.calls.at(-1);
+    expect(ultima[1].headers.Authorization).toBeUndefined();
+  });
+
+  it('un 401 sin token (login fallido) no dispara el aviso de sesión', async () => {
+    mockFetch([{ status: 401, body: { message: 'Credenciales incorrectas' } }]);
+    const alSesionExpirada = vi.fn();
+    const api = createApi({ baseUrl: '/api', onSesionExpirada: alSesionExpirada });
+
+    await expect(api.login({ email: 'a@b.com', password: 'mala' })).rejects.toThrow();
+    expect(alSesionExpirada).not.toHaveBeenCalled();
+  });
+
+  it('sólo avisa una vez aunque fallen varias peticiones seguidas', async () => {
+    mockFetch([
+      { access_token: 'tok-viejo' },
+      { status: 401, body: { message: 'Sesión terminada' } },
+      { status: 401, body: { message: 'Sesión terminada' } },
+    ]);
+    const alSesionExpirada = vi.fn();
+    const api = createApi({ baseUrl: '/api', onSesionExpirada: alSesionExpirada });
+
+    await api.login({ email: 'a@b.com', password: 'x' });
+    await expect(api.me()).rejects.toThrow();
+    await expect(api.me()).rejects.toThrow();
+
+    expect(alSesionExpirada).toHaveBeenCalledTimes(1);
+  });
+});

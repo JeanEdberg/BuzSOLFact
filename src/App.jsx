@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
   Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert, Users,
@@ -693,6 +693,23 @@ export default function App() {
       setErrorConexion(error.message);
     }
   }
+
+  // El backend puede cortar la sesión (cuenta desactivada o token revocado).
+  // Al primer 401 se vuelve a la pantalla de acceso con un aviso claro.
+  useEffect(() => {
+    api.alSesionExpirada(() => {
+      setSesionIniciada(false);
+      setToken(null);
+      setCompanyId(null);
+      setEmpresas([]);
+      setVentas(comprobantesVenta);
+      setCompras(comprobantesCompra);
+      setFuente('demo');
+      // `aviso` sólo se pinta dentro del panel; al volver al acceso hay que
+      // usar el canal de error de esa pantalla o el mensaje no se ve.
+      setErrorConexion('Tu sesión terminó. Vuelve a iniciar sesión.');
+    });
+  }, []);
 
   function volverADemo() {
     setVentas(comprobantesVenta);
