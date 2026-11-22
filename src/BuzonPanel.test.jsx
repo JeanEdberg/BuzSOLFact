@@ -125,4 +125,37 @@ describe('BuzonPanel · buzones independientes', () => {
     await waitFor(() => expect(consultas.length).toBeGreaterThan(0));
     expect(consultas[0]).toContain('entidad=SUNAT');
   });
+
+  it('cuando falla la sincronización no afirma que el buzón está vacío', async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      if (String(url).includes('/companies')) {
+        return { ok: true, status: 200, json: async () => ({ data: [empresa] }), text: async () => '' };
+      }
+      if (String(url).includes('/sincronizar')) {
+        const cuerpo = {
+          success: false,
+          message: 'No se pudo sincronizar el buzón SUNAFIL',
+          error: 'La Clave SOL es válida, pero el servidor de la casilla no responde.',
+        };
+        return {
+          ok: false,
+          status: 502,
+          json: async () => cuerpo,
+          text: async () => JSON.stringify(cuerpo),
+        };
+      }
+      return { ok: true, status: 200, json: async () => listado, text: async () => '' };
+    });
+
+    render(<BuzonPanel conectado />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Sincronizar/ }));
+
+    expect(
+      await screen.findByText(/el servidor de la casilla no responde/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No hay notificaciones para esta empresa/)).toBeNull();
+    expect(screen.getByText(/no se sabe si hay notificaciones/)).toBeTruthy();
+  });
 });

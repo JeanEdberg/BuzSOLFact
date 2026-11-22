@@ -20,6 +20,21 @@ export class SunatApiError extends Error {
   }
 }
 
+// El backend explica los fallos en `message` y `error` (por ejemplo, que la
+// Clave SOL es válida pero la casilla de SUNAFIL no responde). Volcar el JSON
+// crudo en la interfaz esconde ese texto detrás de llaves y comillas.
+async function mensajeDeError(response, path) {
+  const texto = await response.text().catch(() => '');
+  try {
+    const json = JSON.parse(texto);
+    const partes = [json?.message, json?.error].filter((v) => typeof v === 'string' && v.trim());
+    if (partes.length) return partes.join(': ');
+  } catch {
+    // Respuesta que no es JSON: se usa el texto tal cual.
+  }
+  return `Error ${response.status} en ${path}${texto ? `: ${texto.slice(0, 200)}` : ''}`;
+}
+
 export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
   let authToken = token;
 
@@ -33,11 +48,7 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
 
     const response = await fetch(`${baseUrl}${path}`, { ...options, headers });
     if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      throw new SunatApiError(
-        `Error ${response.status} en ${path}${detail ? `: ${detail.slice(0, 200)}` : ''}`,
-        response.status,
-      );
+      throw new SunatApiError(await mensajeDeError(response, path), response.status);
     }
     return response;
   }

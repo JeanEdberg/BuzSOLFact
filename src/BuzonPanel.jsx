@@ -498,7 +498,11 @@ export default function BuzonPanel({ conectado }) {
       {cargando ? (
         <p className="text-sm text-slate-400 flex items-center gap-2"><Loader2 size={15} className="animate-spin" /> Cargando notificaciones…</p>
       ) : items.length === 0 ? (
-        <p className="text-sm text-slate-400">No hay notificaciones para esta empresa. Sincroniza o registra una manualmente.</p>
+        <p className="text-sm text-slate-400">
+          {error
+            ? 'No se pudo leer este buzón, así que no se sabe si hay notificaciones.'
+            : 'No hay notificaciones para esta empresa. Sincroniza o registra una manualmente.'}
+        </p>
       ) : (
         <div className="grid gap-3">
           {items.map((n) => (

@@ -372,6 +372,12 @@ Reglas del backend que conviene no romper:
   (`detalle`). Las credenciales `MODDATOS`/`moddatos` del seeder son de
   **prueba** y SUNAT las rechaza en producción: la clave real se guarda desde
   el panel y nunca se muestra de vuelta.
+- **Los errores de la API se muestran como texto, no como JSON.** `request()`
+  de `src/lib/api.js` lee el cuerpo del error y usa `message` y `error` del
+  backend, que ya están redactados para el usuario. Nunca volcar el cuerpo
+  crudo: el mensaje real queda enterrado entre llaves y comillas. Si un panel
+  muestra un estado vacío, comprobar también si hay error, para no afirmar
+  "no hay datos" cuando en realidad la lectura falló.
 - Autorización por empresa: `User::canAccessCompany($id)` (el super admin accede
   a todas). Filtrar por `company_id` cuando se envía; si no, la empresa del usuario.
 
@@ -411,3 +417,48 @@ Notas de entorno y convenciones del backend:
 - **Certificado por empresa (backend)**: cada RUC firma con su propio PEM
   (`Company::certificadoContenido()`), ya **no** con un archivo fijo compartido.
   Al crear empresa sin certificado, `usuario_sol`/`clave_sol` son opcionales.
+
+## Puente SUNAFIL (`tools/buzon-bridge/`) — lecciones
+
+El puente vive en el repo del backend, no en este. Lo que sigue se aprendió
+depurando la descarga de la carta, que costó cinco intentos.
+
+- **La casilla no tiene URL por documento.** Todo es JSF/PrimeFaces: el estado
+  de la vista va y viene en `javax.faces.ViewState`, y hay que devolverlo en
+  cada petición. Nunca se puede "adivinar" una URL de PDF.
+- **Hay dos modos de submit.** Las constancias son submit normal. La carta
+  exige POST AJAX (`Faces-Request: partial/ajax`, `partial.ajax=true`,
+  `partial.event=click`). Sin eso el servidor no registra qué fila se eligió y
+  la descarga posterior falla con un 500 **dentro** de SUNAFIL
+  (`viewId:/jsfDocs/modulos/...`).
+- **No deducir los campos del HTML.** El puente los deducía y fallaba. Los
+  campos reales, copiados de la pestaña Red del navegador, están en
+  `carta_sunafil.py`. Si SUNAFIL cambia la pantalla, hay que volver a copiarlos.
+- **El botón de descarga del diálogo se llama siempre `btnverDocumento`**, con
+  valor vacío. No es un `j_idtNN` generado. Se perdió tiempo intentando
+  elegirlo por su texto visible, y excluyéndolo por su nombre.
+- **`CERTIFICATE_VERIFY_FAILED` no es un fallo de cifrado.** Significa que el
+  saludo TLS se negoció y sólo falló la validación del certificado. Tratarlo
+  como fallo de cifrado dejaba al puente sin ninguna configuración válida y
+  abortaba antes de la primera petición. Ahora se reintenta sin verificar.
+- **El `ViewState` es de la vista, no del formulario**, y hay que usar el más
+  reciente: el de una respuesta anterior ya caducó.
+
+### Estado verificado contra SUNAFIL real
+
+| documento | resultado |
+|---|---|
+| `carta` | PDF de 132 KB |
+| `constancia_deposito` | PDF de 25 KB |
+| `constancia_acuse` | PDF de 42 KB |
+
+### Pendiente: el ERP no usa el puente para descargar
+
+El puente expone `POST /documento` y descarga los tres PDF, pero el backend
+Laravel **no lo llama**. `BuzonService` sólo tiene `sincronizar()` (listar) y
+`adjuntar()` (subida manual). `GET /v1/notificaciones/{id}/adjunto` sirve el
+archivo guardado en `Storage::disk('public')`, no lo pide al puente.
+
+Para cerrar el circuito hace falta: un método en `BuzonService` que llame a
+`/documento` con `{ruc, usuario, clave, bandeja, indice, tipo}`, guardar el
+binario en el disco y que `descargarAdjunto` lo sirva.

@@ -167,3 +167,60 @@ describe('api.probarFuenteBuzon', () => {
     expect(resultado).toMatchObject({ conectado: true, total: 3 });
   });
 });
+
+describe('mensajes de error del backend', () => {
+  it('muestra el motivo legible y no el JSON crudo', async () => {
+    mockFetch([
+      {
+        status: 502,
+        body: {
+          success: false,
+          message: 'No se pudo sincronizar el buzón SUNAFIL',
+          error: 'La Clave SOL es válida, pero el servidor de la casilla no responde.',
+        },
+      },
+    ]);
+    const api = createApi({ baseUrl: '/api' });
+
+    await expect(api.sincronizarBuzon(1, 'SUNAFIL')).rejects.toThrow(
+      'No se pudo sincronizar el buzón SUNAFIL: La Clave SOL es válida, pero el servidor de la casilla no responde.',
+    );
+  });
+
+  it('usa el texto tal cual cuando la respuesta no es JSON', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => {
+        throw new Error('no es JSON');
+      },
+      text: async () => '<html>Error interno</html>',
+      headers: { get: () => null },
+    }));
+    const api = createApi({ baseUrl: '/api' });
+
+    await expect(api.sincronizarBuzon(1)).rejects.toThrow('Error interno');
+  });
+
+  it('conserva el código de estado en el error', async () => {
+    mockFetch([{ status: 502, body: { message: 'Fallo', error: 'Casilla caída' } }]);
+    const api = createApi({ baseUrl: '/api' });
+
+    await expect(api.sincronizarBuzon(1, 'SUNAFIL')).rejects.toMatchObject({
+      status: 502,
+      name: 'SunatApiError',
+    });
+  });
+
+  it('ignora los campos que no son texto y cae al mensaje genérico', async () => {
+    mockFetch([
+      { status: 422, body: { message: '', error: { ruc: ['El RUC es obligatorio.'] } } },
+    ]);
+    const api = createApi({ baseUrl: '/api' });
+
+    const error = await api.sincronizarBuzon(1).catch((e) => e);
+
+    expect(error.message).not.toContain('[object Object]');
+    expect(error.message).toContain('Error 422');
+  });
+});
