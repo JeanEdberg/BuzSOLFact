@@ -71,6 +71,9 @@ export default function BuzonPanel({ conectado }) {
   const fileInputRef = useRef(null);
   const adjuntoDestino = useRef(null);
   const [descargandoId, setDescargandoId] = useState(null);
+  // Notificación pendiente de confirmar: abrirla registra el acuse de recibo.
+  const [confirmandoApertura, setConfirmandoApertura] = useState(null);
+  const [abriendoId, setAbriendoId] = useState(null);
 
   async function cargarEmpresas() {
     try {
@@ -231,6 +234,29 @@ export default function BuzonPanel({ conectado }) {
     } finally {
       setSubiendoId(null);
       adjuntoDestino.current = null;
+    }
+  }
+
+  // Única vía que abre la carta. Se llama SÓLO al pulsar «Sí, abrir y
+  // notificarse»: el acuse es irreversible y arranca el plazo legal.
+  async function abrirNotificacion(n) {
+    setError(null);
+    setMensaje(null);
+    setAbriendoId(n.id);
+    try {
+      const resultado = await api.abrirNotificacion(n.id);
+      const pendientes = Object.keys(resultado?.pendientes || {});
+      setMensaje(
+        pendientes.length
+          ? `Carta abierta y acuse registrado. Quedan pendientes: ${pendientes.join(', ')}.`
+          : 'Carta abierta y acuse registrado.'
+      );
+      setConfirmandoApertura(null);
+      await cargarNotificaciones(empresaId);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setAbriendoId(null);
     }
   }
 
@@ -556,16 +582,17 @@ export default function BuzonPanel({ conectado }) {
                       : <Download size={15} />}
                   </button>
                 ) : n.entidad === 'SUNAFIL' ? (
-                  // La carta se baja al sincronizar; las constancias, aquí.
+                  // Sincronizar no baja la carta: abrirla registra el acuse de
+                  // recibo, así que se pide confirmación antes de pulsar.
                   <button
-                    onClick={() => descargarAdjunto(n, 'constancia_acuse')}
-                    disabled={descargandoId === n.id}
-                    className="text-slate-400 hover:text-white disabled:opacity-40"
-                    title="Descargar constancia de acuse del puente SUNAFIL"
+                    onClick={() => setConfirmandoApertura(n)}
+                    disabled={abriendoId === n.id}
+                    className="text-amber-400 hover:text-amber-300 disabled:opacity-40"
+                    title="Abrir la carta y notificarse (registra el acuse de recibo)"
                   >
-                    {descargandoId === n.id
+                    {abriendoId === n.id
                       ? <Loader2 size={15} className="animate-spin" />
-                      : <Paperclip size={15} />}
+                      : <ShieldAlert size={15} />}
                   </button>
                 ) : (
                   <span className="text-slate-600" title="Sin adjunto"><Paperclip size={15} /></span>
@@ -589,6 +616,41 @@ export default function BuzonPanel({ conectado }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmandoApertura && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-amber-500/40 rounded-xl max-w-md w-full p-5 space-y-3">
+            <div className="flex items-center gap-2 text-amber-400 font-semibold">
+              <AlertTriangle size={18} /> Abrir la carta registra el acuse
+            </div>
+            <p className="text-sm text-slate-300">
+              Al abrir <strong>{confirmandoApertura.asunto}</strong>, SUNAFIL dará la
+              notificación por recibida y empezará a correr el plazo para responder.
+              Esta acción no se puede deshacer desde el ERP.
+            </p>
+            <p className="text-xs text-slate-400">
+              {confirmandoApertura.codigo ? `Registro: ${confirmandoApertura.codigo}` : null}
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={() => setConfirmandoApertura(null)}
+                disabled={abriendoId !== null}
+                className="px-3 py-1.5 text-sm rounded-lg text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => abrirNotificacion(confirmandoApertura)}
+                disabled={abriendoId !== null}
+                className="px-3 py-1.5 text-sm rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium disabled:opacity-40 flex items-center gap-1.5"
+              >
+                {abriendoId !== null && <Loader2 size={14} className="animate-spin" />}
+                Sí, abrir y notificarse
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

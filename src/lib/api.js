@@ -660,9 +660,22 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
+    // «Abrir y notificarse»: baja la carta y registra el acuse de recibo en
+    // SUNAFIL. Irreversible y con plazo legal, así que el backend exige
+    // `confirmo` y permiso. No se llama nunca desde un efecto automático.
+    async abrirNotificacion(id) {
+      const response = await request(`/v1/notificaciones/${id}/abrir`, {
+        method: 'POST',
+        body: JSON.stringify({ confirmo: true }),
+      });
+      const json = await response.json();
+      return json?.data ?? json;
+    },
+
     // Descarga el adjunto de una notificación (PDF/imagen). Si aún no está
     // guardado, el backend lo pide al puente: `tipo` elige cuál de SUNAFIL
-    // (carta, constancia_deposito, constancia_acuse).
+    // (carta, constancia_deposito, constancia_acuse). La carta sólo se sirve
+    // si ya se abrió: pedirla a la casilla registra el acuse.
     async descargarAdjuntoNotificacion(id, tipo) {
       const consulta = tipo ? `?tipo=${encodeURIComponent(tipo)}` : '';
       const response = await request(`/v1/notificaciones/${id}/adjunto${consulta}`);

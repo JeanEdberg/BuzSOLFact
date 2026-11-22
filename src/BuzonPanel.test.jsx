@@ -159,3 +159,93 @@ describe('BuzonPanel · buzones independientes', () => {
     expect(screen.getByText(/no se sabe si hay notificaciones/)).toBeTruthy();
   });
 });
+
+describe('BuzonPanel · abrir y notificarse', () => {
+  // Una notificación de SUNAFIL sin carta bajada: el caso que abre el acuse.
+  const conPendiente = {
+    data: {
+      data: [
+        {
+          id: 42,
+          entidad: 'SUNAFIL',
+          asunto: 'Carta inductiva general',
+          estado: 'pendiente',
+          fecha: '2026-10-29',
+          codigo: '0000122241 - 2026 - SUNAFIL/DPPR/SDPA',
+          tiene_adjunto: false,
+        },
+      ],
+      total: 1,
+    },
+    resumen: { pendientes: 1, total: 1 },
+    fuente: { sunat: true, sunafil: true, configurado: true, token: true, sol: true, origenes: ['empresa'] },
+  };
+
+  function stubConPendiente() {
+    globalThis.fetch = vi.fn(async (url) => {
+      const cuerpo = String(url).includes('/companies') ? { data: [empresa] } : conPendiente;
+      return { ok: true, status: 200, json: async () => cuerpo, text: async () => '' };
+    });
+  }
+
+  it('pide confirmación en vez de abrir la carta al primer clic', async () => {
+    stubConPendiente();
+    render(<BuzonPanel conectado />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL/ }));
+
+    await userEvent.click(
+      await screen.findByTitle(/Abrir la carta y notificarse/),
+    );
+
+    // Aparece el aviso, pero todavía no se llamó al backend.
+    expect(await screen.findByText(/Abrir la carta registra el acuse/)).toBeTruthy();
+    const llamadas = globalThis.fetch.mock.calls.map(([u]) => String(u));
+    expect(llamadas.some((u) => u.includes('/abrir'))).toBe(false);
+  });
+
+  it('cancelar no abre nada', async () => {
+    stubConPendiente();
+    render(<BuzonPanel conectado />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL/ }));
+    await userEvent.click(await screen.findByTitle(/Abrir la carta y notificarse/));
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Abrir la carta registra el acuse/)).toBeNull();
+    });
+    const llamadas = globalThis.fetch.mock.calls.map(([u]) => String(u));
+    expect(llamadas.some((u) => u.includes('/abrir'))).toBe(false);
+  });
+
+  it('confirmar llama a /abrir y avisa de las constancias que faltan', async () => {
+    globalThis.fetch = vi.fn(async (url) => {
+      const u = String(url);
+      if (u.includes('/companies')) {
+        return { ok: true, status: 200, json: async () => ({ data: [empresa] }), text: async () => '' };
+      }
+      if (u.includes('/abrir')) {
+        const cuerpo = {
+          success: true,
+          data: { ok: true, archivos: ['carta'], pendientes: { constancia_acuse: 'aún no publicada' } },
+        };
+        return { ok: true, status: 200, json: async () => cuerpo, text: async () => '' };
+      }
+      return { ok: true, status: 200, json: async () => conPendiente, text: async () => '' };
+    });
+
+    render(<BuzonPanel conectado />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL/ }));
+    await userEvent.click(await screen.findByTitle(/Abrir la carta y notificarse/));
+    await userEvent.click(await screen.findByRole('button', { name: /Sí, abrir y notificarse/ }));
+
+    expect(await screen.findByText(/acuse registrado/i)).toBeTruthy();
+    expect(await screen.findByText(/constancia_acuse/)).toBeTruthy();
+
+    const abrir = globalThis.fetch.mock.calls.find(([u]) => String(u).includes('/abrir'));
+    expect(abrir[1].method).toBe('POST');
+    expect(JSON.parse(abrir[1].body)).toEqual({ confirmo: true });
+  });
+});
