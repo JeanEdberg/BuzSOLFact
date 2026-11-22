@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert, } from 'lucide-react';
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert, Users,
+} from 'lucide-react';
 import { api, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
@@ -23,6 +24,7 @@ import EmisionIndividual from './EmisionIndividual.jsx';
 import ResumenDiario from './ResumenDiario.jsx';
 import RetencionesBajas from './RetencionesBajas.jsx';
 import SeriesPanel from './SeriesPanel.jsx';
+import UsuariosPanel from './UsuariosPanel.jsx';
 import ValidacionPanel from './ValidacionPanel.jsx';
 
 // El tipo de cambio se resuelve por fecha contra el backend (proxy de SUNAT).
@@ -45,6 +47,7 @@ const TABS = [
   { id: 'validacion', label: 'Validación SSCO / SIRE', icon: ShieldAlert },
   { id: 'series', label: 'Series por sucursal', icon: ListOrdered },
   { id: 'accesos-sol', label: 'Accesos SOL', icon: KeyRound },
+  { id: 'usuarios', label: 'Usuarios', icon: Users },
   { id: 'conexion', label: 'Conexión API', icon: Plug },
 ];
 
@@ -1018,6 +1021,9 @@ export default function App() {
           {activeTab === 'series' && <SeriesPanel conectado={fuente === 'api'} />}
           {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
 
+          {activeTab === 'usuarios' && (
+            <UsuariosPanel conectado={fuente === 'api'} companyId={companyId} />
+          )}
 
           {activeTab === 'conexion' && (
             <ConexionPanel

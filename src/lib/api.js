@@ -130,6 +130,29 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return response.json();
     },
 
+    // Usuarios visibles para el actor (super_admin: todos; company_admin: los
+    // de su empresa).
+    async listUsers() {
+      const response = await request('/v1/auth/users');
+      const json = await response.json();
+      return json?.items ?? normalizarLista(json);
+    },
+
+    // Roles que el actor puede asignar.
+    async listRoles() {
+      const response = await request('/v1/auth/roles');
+      const json = await response.json();
+      return json?.items ?? normalizarLista(json);
+    },
+
+    async createUser(payload) {
+      const response = await request('/v1/auth/create-user', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      return response.json();
+    },
+
     // Empresas registradas (multiempresa). Cada una tiene sus propias
     // credenciales SOL secundarias y su certificado digital.
     async listCompanies() {
