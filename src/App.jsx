@@ -719,6 +719,7 @@ export default function App() {
     setCompras(comprobantesCompra);
     setFuente('demo');
     setToken(null);
+    setUsuarioId(null);
     setCompanyId(null);
     setEmpresas([]);
     api.setToken(null);
