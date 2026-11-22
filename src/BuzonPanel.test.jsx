@@ -219,6 +219,40 @@ describe('BuzonPanel · abrir y notificarse', () => {
     expect(llamadas.some((u) => u.includes('/abrir'))).toBe(false);
   });
 
+  it('una notificación ya acusada ofrece la constancia y su plazo no se repite', async () => {
+    const acusada = {
+      data: {
+        data: [
+          {
+            id: 43,
+            entidad: 'SUNAFIL',
+            asunto: 'Carta ya notificada',
+            estado: 'pendiente',
+            fecha: '2026-10-29',
+            tiene_adjunto: true,
+            con_acuse: true,
+            ultimo_dia_acuse_manual: '2026-10-30',
+          },
+        ],
+        total: 1,
+      },
+      resumen: { pendientes: 1, total: 1 },
+      fuente: null,
+    };
+    globalThis.fetch = vi.fn(async (url) => {
+      const cuerpo = String(url).includes('/companies') ? { data: [empresa] } : acusada;
+      return { ok: true, status: 200, json: async () => cuerpo, text: async () => '' };
+    });
+
+    render(<BuzonPanel conectado />);
+    await userEvent.click(await screen.findByRole('button', { name: /SUNAFIL/ }));
+
+    // La constancia sigue accesible aunque la carta ya esté guardada.
+    expect(await screen.findByTitle(/Descargar constancia de acuse/)).toBeTruthy();
+    // Y no se avisa de un plazo que ya se cumplió.
+    expect(screen.queryByText(/Acusar antes del/)).toBeNull();
+  });
+
   it('confirmar llama a /abrir y avisa de las constancias que faltan', async () => {
     globalThis.fetch = vi.fn(async (url) => {
       const u = String(url);

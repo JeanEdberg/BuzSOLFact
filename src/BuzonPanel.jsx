@@ -568,8 +568,27 @@ export default function BuzonPanel({ conectado }) {
                 {detalleLegible(n.detalle) && (
                   <p className="text-xs text-slate-400 mt-1 line-clamp-2">{detalleLegible(n.detalle)}</p>
                 )}
+                {n.entidad === 'SUNAFIL' && !n.con_acuse && n.ultimo_dia_acuse_manual && (
+                  <p className="text-xs text-amber-400 mt-1">
+                    Acusar antes del {fechaCorta(n.ultimo_dia_acuse_manual)} (estimado)
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {n.entidad === 'SUNAFIL' && n.con_acuse && (
+                  // Ya notificada: la carta está guardada y las constancias se
+                  // piden bajo demanda (no tienen efecto legal).
+                  <button
+                    onClick={() => descargarAdjunto(n, 'constancia_acuse')}
+                    disabled={descargandoId === n.id}
+                    className="text-slate-400 hover:text-white disabled:opacity-40"
+                    title="Descargar constancia de acuse"
+                  >
+                    {descargandoId === n.id
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <Paperclip size={15} />}
+                  </button>
+                )}
                 {n.tiene_adjunto ? (
                   <button
                     onClick={() => descargarAdjunto(n)}
