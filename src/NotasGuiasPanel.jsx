@@ -36,14 +36,14 @@ const esGuia = (sub) => sub === 'guia';
  * se escribe a mano y el correlativo lo asigna el backend por sucursal. Tras
  * emitir se puede enviar a SUNAT y descargar XML/CDR/PDF desde el listado.
  */
-export default function NotasGuiasPanel({ conectado }) {
+export default function NotasGuiasPanel({ conectado, subInicial = 'nota-credito' }) {
   const [empresas, setEmpresas] = useState([]);
   const [empresaId, setEmpresaId] = useState(null);
   const [sucursales, setSucursales] = useState([]);
   const [branchId, setBranchId] = useState(null);
   const [clientes, setClientes] = useState([]);
 
-  const [sub, setSub] = useState('nota-credito');
+  const [sub, setSub] = useState(subInicial);
   const [motivos, setMotivos] = useState([]);
   const [modalidades, setModalidades] = useState([]);
   const [documentos, setDocumentos] = useState([]);

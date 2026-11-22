@@ -18,6 +18,7 @@ import BuzonPanel from './BuzonPanel.jsx';
 import CargaMasiva from './CargaMasiva.jsx';
 import ImportacionHistorica from './ImportacionHistorica.jsx';
 import NotasGuiasPanel from './NotasGuiasPanel.jsx';
+import GuiasPanel from './GuiasPanel.jsx';
 import PantallaAcceso from './components/PantallaAcceso.jsx';
 import { LogotipoFacBuzMoa } from './components/MarcaFacBuzMoa.jsx';
 import EmisionIndividual from './EmisionIndividual.jsx';
@@ -612,6 +613,7 @@ export default function App() {
   const [cargando, setCargando] = useState(false);
   const [errorConexion, setErrorConexion] = useState(null);
   const [busqueda, setBusqueda] = useState('');
+  const [subNotas, setSubNotas] = useState('nota-credito');
   // Envío asíncrono: el backend encola el comprobante y reintenta solo.
   const [envioAsync, setEnvioAsync] = useState(false);
   // Sin token no hay sesión: se pide entrar antes de mostrar el ERP.
@@ -989,36 +991,23 @@ export default function App() {
             <ImportacionHistorica api={api} companyId={companyId} conectado={fuente === 'api'} />
           )}
 
-          {activeTab === 'notas' && <NotasGuiasPanel conectado={fuente === 'api'} />}
+          {activeTab === 'notas' && (
+            <NotasGuiasPanel conectado={fuente === 'api'} subInicial={subNotas} />
+          )}
 
           {activeTab === 'resumen' && <ResumenDiario conectado={fuente === 'api'} />}
           {activeTab === 'retenciones' && <RetencionesBajas conectado={fuente === 'api'} />}
 
           {activeTab === 'guias' && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap justify-between items-center gap-3">
-                <h3 className="text-xl font-bold">Consulta y Descarga de Comprobantes</h3>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                    placeholder="Buscar serie o cliente..."
-                    className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                  <button className="bg-blue-600 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 flex items-center gap-2">
-                    <Search size={16} /> Buscar
-                  </button>
-                </div>
-              </div>
-              <ComprobantesTable
-                documentos={filtrados(ventas)}
-                contraparte="Cliente"
-                onDownload={handleDownload}
-                onEnviar={handleEnviar}
-                busy={busy}
-              />
-            </div>
+            <GuiasPanel
+              api={api}
+              companyId={companyId}
+              conectado={fuente === 'api'}
+              onIrANotas={() => {
+                setSubNotas('guia');
+                setActiveTab('notas');
+              }}
+            />
           )}
 
           {activeTab === 'libros' && (
