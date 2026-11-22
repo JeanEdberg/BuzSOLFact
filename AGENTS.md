@@ -44,6 +44,35 @@ Para ver la app contra el backend real:
    contraseñas se leen de `INMOA_SUPERADMIN_PASSWORD` / `INMOA_ADMIN_PASSWORD`
    en el `.env` del backend. `php artisan migrate:fresh --seed` deja todo listo.
 
+## Entorno de demo local (SQLite + datos INMOA)
+
+Para enseñar la app sin MySQL ni credenciales reales:
+
+```bash
+cd /tmp/api-sunat
+touch database/demo.sqlite
+export DB_CONNECTION=sqlite DB_DATABASE=/tmp/api-sunat/database/demo.sqlite
+export INMOA_SUPERADMIN_PASSWORD='...' INMOA_ADMIN_PASSWORD='...'
+php artisan migrate:fresh --force
+php artisan db:seed --class=RolesAndPermissionsSeeder --force
+php artisan db:seed --class=InmoaSeeder --force
+php artisan serve --host=127.0.0.1 --port=12001
+```
+
+Las variables van por entorno y **no** se tocan en el `.env` del backend, que
+sigue apuntando a MySQL.
+
+La fuente del buzón de la empresa hay que apuntarla al puente con
+`POST /api/v1/notificaciones/fuente`; el endpoint incluye la ruta, es decir
+`http://127.0.0.1:12002/buzon`, no sólo el host.
+
+### SUNAT/SUNAFIL no es alcanzable desde este entorno
+
+`e-menu.sunat.gob.pe` resetea la conexión (el resto de internet responde). El
+puente devuelve entonces "el servidor de la casilla no responde". La cadena
+PWA → Laravel → puente funciona; lo que falta es salida a SUNAT. Para ver el
+buzón con datos, sembrar `Notificacion` a mano en la base de demo.
+
 ## Autocompletado por RUC/DNI
 
 - La PWA consulta el padrón al escribir los 11 dígitos del RUC (pestaña
