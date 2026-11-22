@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Bell, FileText, ShoppingCart, Truck, Search, CheckCircle2,
-  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert,
-} from 'lucide-react';
+  Download, Upload, AlertCircle, BookOpen, Plug, Loader2, KeyRound, Send, ListOrdered, History, FileMinus, FilePlus, CalendarClock, Receipt, ShieldAlert, } from 'lucide-react';
 import { api, downloadText, downloadBlob } from './lib/api.js';
 import { buildVentas141, buildCompras81, summarize } from './lib/ple.js';
 import { buildRvie, buildRce } from './lib/sire.js';
@@ -18,6 +17,8 @@ import BuzonPanel from './BuzonPanel.jsx';
 import CargaMasiva from './CargaMasiva.jsx';
 import ImportacionHistorica from './ImportacionHistorica.jsx';
 import NotasGuiasPanel from './NotasGuiasPanel.jsx';
+import PantallaAcceso from './components/PantallaAcceso.jsx';
+import { LogotipoFacBuzMoa } from './components/MarcaFacBuzMoa.jsx';
 import EmisionIndividual from './EmisionIndividual.jsx';
 import ResumenDiario from './ResumenDiario.jsx';
 import RetencionesBajas from './RetencionesBajas.jsx';
@@ -609,6 +610,8 @@ export default function App() {
   const [busqueda, setBusqueda] = useState('');
   // Envío asíncrono: el backend encola el comprobante y reintenta solo.
   const [envioAsync, setEnvioAsync] = useState(false);
+  // Sin token no hay sesión: se pide entrar antes de mostrar el ERP.
+  const [sesionIniciada, setSesionIniciada] = useState(false);
 
   async function conectar({ email, password }) {
     setCargando(true);
@@ -616,6 +619,7 @@ export default function App() {
     try {
       const sesion = await api.login({ email, password });
       await cargarTrasSesion(sesion);
+      setSesionIniciada(true);
       setAviso('Sesión iniciada correctamente.');
     } catch (error) {
       setErrorConexion(error.message);
@@ -631,6 +635,7 @@ export default function App() {
     try {
       const sesion = await api.register(payload);
       await cargarTrasSesion(sesion);
+      setSesionIniciada(true);
       setAviso(`Empresa ${sesion.company?.razon_social ?? ''} registrada. Ya puedes emitir comprobantes.`);
     } catch (error) {
       setErrorConexion(error.message);
@@ -796,12 +801,18 @@ export default function App() {
     setBusqueda(`${ref.serie}-${ref.numero}`);
   }
 
+  if (!sesionIniciada) {
+    return (
+      <PantallaAcceso onEntrar={conectar} cargando={cargando} error={errorConexion} />
+    );
+  }
+
   return (
     <div className="flex h-screen bg-slate-900 text-slate-100 font-sans">
       <aside className="w-64 bg-slate-800 border-r border-slate-700 flex-col hidden md:flex h-screen shrink-0">
         <div className="p-5 border-b border-slate-700 shrink-0">
-          <h1 className="text-xl font-bold text-blue-400">INMOA ERP PWA</h1>
-          <p className="text-xs text-slate-400">RUC: {empresa.ruc}</p>
+          <LogotipoFacBuzMoa tono="oscuro" compacto />
+          <p className="mt-2 text-xs text-slate-400">RUC: {empresa.ruc}</p>
         </div>
         <nav className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
           {TABS.map(({ id, label, icon: Icon }) => (
@@ -1006,6 +1017,7 @@ export default function App() {
           )}
           {activeTab === 'series' && <SeriesPanel conectado={fuente === 'api'} />}
           {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
+
 
           {activeTab === 'conexion' && (
             <ConexionPanel
