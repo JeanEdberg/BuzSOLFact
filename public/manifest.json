@@ -1,12 +1,39 @@
 {
-  "name": "INMOA ERP & Facturación PWA",
-  "short_name": "INMOA ERP",
+  "name": "FacBuzMoa — Facturador y buzón tributario",
+  "short_name": "FacBuzMoa",
+  "description": "Tu facturador y buzón tributario en un solo lugar.",
+  "id": "/",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#2563eb",
+  "orientation": "any",
+  "lang": "es-PE",
+  "dir": "ltr",
+  "categories": [
+    "business",
+    "finance",
+    "productivity"
+  ],
+  "background_color": "#062431",
+  "theme_color": "#0e4f6b",
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }
