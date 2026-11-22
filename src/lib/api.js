@@ -660,9 +660,12 @@ export function createApi({ baseUrl = BASE_URL, token = null } = {}) {
       return json?.data ?? json;
     },
 
-    // Descarga el adjunto de una notificación (PDF/imagen).
-    async descargarAdjuntoNotificacion(id) {
-      const response = await request(`/v1/notificaciones/${id}/adjunto`);
+    // Descarga el adjunto de una notificación (PDF/imagen). Si aún no está
+    // guardado, el backend lo pide al puente: `tipo` elige cuál de SUNAFIL
+    // (carta, constancia_deposito, constancia_acuse).
+    async descargarAdjuntoNotificacion(id, tipo) {
+      const consulta = tipo ? `?tipo=${encodeURIComponent(tipo)}` : '';
+      const response = await request(`/v1/notificaciones/${id}/adjunto${consulta}`);
       const blob = await response.blob();
       const disposition = response.headers.get('Content-Disposition') || '';
       const match = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(disposition);

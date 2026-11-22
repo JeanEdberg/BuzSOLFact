@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { createApi } from './api.js';
 
 // Cada respuesta puede ser el cuerpo o `{ status, body }` para simular errores.
@@ -15,6 +15,7 @@ function mockFetch(respuestas) {
       status,
       json: async () => cuerpo,
       text: async () => JSON.stringify(cuerpo),
+      blob: async () => new Blob(['%PDF-1.4']),
       headers: { get: () => null },
     };
   });
@@ -222,5 +223,36 @@ describe('mensajes de error del backend', () => {
 
     expect(error.message).not.toContain('[object Object]');
     expect(error.message).toContain('Error 422');
+  });
+});
+
+// @vitest-environment jsdom
+describe('api.descargarAdjuntoNotificacion', () => {
+  // jsdom no implementa `createObjectURL`, y `saveBlob` lo necesita para
+  // ofrecer la descarga.
+  beforeEach(() => {
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:test');
+    globalThis.URL.revokeObjectURL = vi.fn();
+  });
+
+  it('pide el tipo al backend cuando se descarga una constancia', async () => {
+    const llamadas = mockFetch([]);
+    const api = createApi({ baseUrl: 'https://api.test' });
+
+    await api.descargarAdjuntoNotificacion(7, 'constancia_acuse');
+
+    // Sin el tipo el backend bajaría la carta, que es el valor por defecto.
+    expect(llamadas[0].url).toBe(
+      'https://api.test/v1/notificaciones/7/adjunto?tipo=constancia_acuse',
+    );
+  });
+
+  it('no añade consulta cuando no se pide un tipo concreto', async () => {
+    const llamadas = mockFetch([]);
+    const api = createApi({ baseUrl: 'https://api.test' });
+
+    await api.descargarAdjuntoNotificacion(7);
+
+    expect(llamadas[0].url).toBe('https://api.test/v1/notificaciones/7/adjunto');
   });
 });

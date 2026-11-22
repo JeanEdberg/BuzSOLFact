@@ -19,6 +19,25 @@ const colorEntidad = (entidad) =>
     ? 'bg-amber-500/20 text-amber-400'
     : 'bg-purple-500/20 text-purple-400';
 
+// `detalle` puede traer el origen del documento en JSON (`bandeja`, `indice`).
+// Volcarlo tal cual enseñaría llaves y comillas al usuario.
+const detalleLegible = (detalle) => {
+  if (!detalle) return '';
+  try {
+    const datos = JSON.parse(detalle);
+    if (datos && typeof datos === 'object' && !Array.isArray(datos)) {
+      const resto = { ...datos };
+      delete resto.bandeja;
+      delete resto.indice;
+      const valores = Object.values(resto).filter((v) => v !== null && v !== '');
+      return valores.length ? valores.join(' · ') : '';
+    }
+  } catch {
+    // Texto normal: se muestra tal cual.
+  }
+  return String(detalle);
+};
+
 const fechaCorta = (valor) => {
   if (!valor) return '—';
   const d = new Date(valor);
@@ -51,6 +70,7 @@ export default function BuzonPanel({ conectado }) {
   const [subiendoId, setSubiendoId] = useState(null);
   const fileInputRef = useRef(null);
   const adjuntoDestino = useRef(null);
+  const [descargandoId, setDescargandoId] = useState(null);
 
   async function cargarEmpresas() {
     try {
@@ -214,12 +234,15 @@ export default function BuzonPanel({ conectado }) {
     }
   }
 
-  async function descargarAdjunto(n) {
+  async function descargarAdjunto(n, tipo) {
     setError(null);
+    setDescargandoId(n.id);
     try {
-      await api.descargarAdjuntoNotificacion(n.id);
+      await api.descargarAdjuntoNotificacion(n.id, tipo);
     } catch (e) {
       setError(e.message);
+    } finally {
+      setDescargandoId(null);
     }
   }
 
@@ -516,12 +539,33 @@ export default function BuzonPanel({ conectado }) {
                 <p className="text-xs text-slate-400">
                   {fechaCorta(n.fecha)}{n.tipo ? ` · ${n.tipo}` : ''}{n.codigo ? ` · ${n.codigo}` : ''}
                 </p>
-                {n.detalle && <p className="text-xs text-slate-400 mt-1 line-clamp-2">{n.detalle}</p>}
+                {detalleLegible(n.detalle) && (
+                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{detalleLegible(n.detalle)}</p>
+                )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {n.tiene_adjunto ? (
-                  <button onClick={() => descargarAdjunto(n)} className="text-slate-400 hover:text-white" title="Descargar adjunto">
-                    <Download size={15} />
+                  <button
+                    onClick={() => descargarAdjunto(n)}
+                    disabled={descargandoId === n.id}
+                    className="text-slate-400 hover:text-white disabled:opacity-40"
+                    title="Descargar adjunto"
+                  >
+                    {descargandoId === n.id
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <Download size={15} />}
+                  </button>
+                ) : n.entidad === 'SUNAFIL' ? (
+                  // La carta se baja al sincronizar; las constancias, aquí.
+                  <button
+                    onClick={() => descargarAdjunto(n, 'constancia_acuse')}
+                    disabled={descargandoId === n.id}
+                    className="text-slate-400 hover:text-white disabled:opacity-40"
+                    title="Descargar constancia de acuse del puente SUNAFIL"
+                  >
+                    {descargandoId === n.id
+                      ? <Loader2 size={15} className="animate-spin" />
+                      : <Paperclip size={15} />}
                   </button>
                 ) : (
                   <span className="text-slate-600" title="Sin adjunto"><Paperclip size={15} /></span>
