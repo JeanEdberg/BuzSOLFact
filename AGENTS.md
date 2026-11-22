@@ -506,3 +506,40 @@ no se serializan.
 
 `NotasGuiasPanel` acepta `subInicial` para abrirse directamente en la
 subpestaña de guías (`'guia'`) desde el botón "Emitir una guía".
+
+### El backend vive en `/workspace/api-sunat`, no en `/tmp`
+
+El 2026-11-22 el entorno se reinició y borró `/tmp`, llevándose el clon del
+backend y un commit que nunca se subió. Se recuperó replicando las acciones
+`file_editor` y los comandos de escritura del historial de eventos en
+`/var/openhands/conversations/<id>/events/`.
+
+Para evitarlo: clonar el backend bajo `/workspace/` y hacer push en cuanto
+haya un commit, no al final de la sesión.
+
+Para reconstruir un archivo perdido, los eventos guardan cada acción con sus
+argumentos completos:
+
+```bash
+cd /var/openhands/conversations/<id>/events
+python3 -c "
+import json,glob
+for f in glob.glob('*.json'):
+    d=json.load(open(f)); tc=d.get('tool_call') or {}
+    a=tc.get('arguments') or {}
+    if isinstance(a,str):
+        import json as j; a=j.loads(a)
+    if 'NOMBRE_DEL_ARCHIVO' in (a.get('path') or ''): print(f, a.get('command'))
+"
+```
+
+Ojo: las ediciones hechas con `sed -i` o `python3 - <<PY` por terminal no
+aparecen como `file_editor`, hay que extraerlas aparte del `tool_call` de
+`terminal`.
+
+### Entorno PHP para pruebas
+
+`php8.4-cli` más `bcmath soap gd zip mbstring xml curl sqlite3 intl`, Composer
+desde `getcomposer.org`. Sin `.env` la suite falla entera con
+`MissingAppKeyException`: copiar `.env.example`, `php artisan key:generate`,
+y apuntar `DB_CONNECTION=sqlite` a `database/database.sqlite`.
