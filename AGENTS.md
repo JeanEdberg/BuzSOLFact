@@ -491,3 +491,18 @@ archivo guardado en `Storage::disk('public')`, no lo pide al puente.
 Para cerrar el circuito hace falta: un método en `BuzonService` que llame a
 `/documento` con `{ruc, usuario, clave, bandeja, indice, tipo}`, guardar el
 binario en el disco y que `descargarAdjunto` lo sirva.
+
+### Paneles conectados a la API (no copias)
+
+Cada pestaña del menú tiene su componente en `src/`: `GuiasPanel`,
+`ResumenDiario`, `RetencionesBajas`, `CargaMasiva`, `ImportacionHistorica`.
+Si una pestaña muestra datos de otra, es un bug de `App.jsx`, no del panel.
+
+Campos reales que devuelve `GET /v1/dispatch-guides`: el destinatario viene
+anidado (`destinatario.razon_social`, `destinatario.numero_documento`) y el
+motivo de traslado es `des_traslado`. No existen `destinatario_razon_social`
+ni `motivo_traslado`; el modelo no declara `$appends`, así que los accessors
+no se serializan.
+
+`NotasGuiasPanel` acepta `subInicial` para abrirse directamente en la
+subpestaña de guías (`'guia'`) desde el botón "Emitir una guía".
