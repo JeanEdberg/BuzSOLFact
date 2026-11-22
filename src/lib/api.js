@@ -160,6 +160,24 @@ export function createApi({ baseUrl = BASE_URL, token = null, onSesionExpirada =
       return response.json();
     },
 
+    // Desactivar revoca los tokens abiertos: la sesión del usuario cae en su
+    // siguiente petición, no cuando caduque el token.
+    async setUserActive(id, active) {
+      const response = await request(`/v1/auth/users/${id}/active`, {
+        method: 'PATCH',
+        body: JSON.stringify({ active }),
+      });
+      return response.json();
+    },
+
+    async setUserRole(id, roleName) {
+      const response = await request(`/v1/auth/users/${id}/role`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role_name: roleName }),
+      });
+      return response.json();
+    },
+
     // Empresas registradas (multiempresa). Cada una tiene sus propias
     // credenciales SOL secundarias y su certificado digital.
     async listCompanies() {

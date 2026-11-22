@@ -302,3 +302,35 @@ describe('sesión expirada (401 con token)', () => {
     expect(alSesionExpirada).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('gestión de usuarios', () => {
+  it('desactivar envía PATCH con active=false', async () => {
+    const llamadas = mockFetch([{ message: 'Usuario desactivado', user: { id: 7, active: false } }]);
+    const api = createApi({ baseUrl: '/api', token: 'tok' });
+
+    const data = await api.setUserActive(7, false);
+
+    expect(llamadas[0].url).toBe('/api/v1/auth/users/7/active');
+    expect(llamadas[0].options.method).toBe('PATCH');
+    expect(JSON.parse(llamadas[0].options.body)).toEqual({ active: false });
+    expect(data.user.active).toBe(false);
+  });
+
+  it('cambiar rol envía role_name', async () => {
+    const llamadas = mockFetch([{ message: 'Rol actualizado', user: { id: 7, role: 'company_admin' } }]);
+    const api = createApi({ baseUrl: '/api', token: 'tok' });
+
+    const data = await api.setUserRole(7, 'company_admin');
+
+    expect(llamadas[0].url).toBe('/api/v1/auth/users/7/role');
+    expect(JSON.parse(llamadas[0].options.body)).toEqual({ role_name: 'company_admin' });
+    expect(data.user.role).toBe('company_admin');
+  });
+
+  it('propaga el mensaje del backend cuando la operación se rechaza', async () => {
+    mockFetch([{ status: 403, body: { message: 'No puedes modificar tu propia cuenta' } }]);
+    const api = createApi({ baseUrl: '/api', token: 'tok' });
+
+    await expect(api.setUserActive(1, false)).rejects.toThrow('No puedes modificar tu propia cuenta');
+  });
+});

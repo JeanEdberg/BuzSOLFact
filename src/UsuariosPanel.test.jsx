@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UsuariosPanel from './UsuariosPanel.jsx';
 import { api } from './lib/api.js';
@@ -69,6 +69,86 @@ describe('UsuariosPanel', () => {
     });
     await waitFor(() => expect(screen.getByText(/nuevo@inmoa.com creado/i)).toBeTruthy());
     expect(listUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('desactiva a un usuario tras confirmar y recarga el listado', async () => {
+    const listUsers = vi.spyOn(api, 'listUsers').mockResolvedValue(usuarios);
+    vi.spyOn(api, 'listRoles').mockResolvedValue(roles);
+    const setUserActive = vi.spyOn(api, 'setUserActive').mockResolvedValue({ message: 'ok' });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<UsuariosPanel conectado companyId={1} />);
+    await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(1));
+
+    const filaEricka = screen.getByText('ericka@inmoa.com').closest('tr');
+    await userEvent.click(within(filaEricka).getByRole('button', { name: /Desactivar/i }));
+
+    await waitFor(() => expect(setUserActive).toHaveBeenCalledWith(1, false));
+    expect(window.confirm).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText(/desactivado y su sesión cerrada/i)).toBeTruthy());
+    expect(listUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it('no desactiva si el usuario cancela la confirmación', async () => {
+    const listUsers = vi.spyOn(api, 'listUsers').mockResolvedValue(usuarios);
+    vi.spyOn(api, 'listRoles').mockResolvedValue(roles);
+    const setUserActive = vi.spyOn(api, 'setUserActive');
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<UsuariosPanel conectado companyId={1} />);
+    await waitFor(() => expect(listUsers).toHaveBeenCalledTimes(1));
+
+    const filaEricka = screen.getByText('ericka@inmoa.com').closest('tr');
+    await userEvent.click(within(filaEricka).getByRole('button', { name: /Desactivar/i }));
+
+    expect(setUserActive).not.toHaveBeenCalled();
+  });
+
+  it('activa a un usuario inactivo sin pedir confirmación', async () => {
+    vi.spyOn(api, 'listUsers').mockResolvedValue(usuarios);
+    vi.spyOn(api, 'listRoles').mockResolvedValue(roles);
+    const setUserActive = vi.spyOn(api, 'setUserActive').mockResolvedValue({ message: 'ok' });
+    const confirmar = vi.spyOn(window, 'confirm');
+
+    render(<UsuariosPanel conectado companyId={1} />);
+    await waitFor(() => expect(screen.getByText('operador@inmoa.com')).toBeTruthy());
+
+    const filaOperador = screen.getByText('operador@inmoa.com').closest('tr');
+    await userEvent.click(within(filaOperador).getByRole('button', { name: /^Activar$/i }));
+
+    await waitFor(() => expect(setUserActive).toHaveBeenCalledWith(2, true));
+    expect(confirmar).not.toHaveBeenCalled();
+  });
+
+  it('cambia el rol con el desplegable de la fila', async () => {
+    vi.spyOn(api, 'listUsers').mockResolvedValue(usuarios);
+    vi.spyOn(api, 'listRoles').mockResolvedValue(roles);
+    const setUserRole = vi.spyOn(api, 'setUserRole').mockResolvedValue({ message: 'ok' });
+
+    render(<UsuariosPanel conectado companyId={1} />);
+    await waitFor(() => expect(screen.getByText('operador@inmoa.com')).toBeTruthy());
+
+    const filaOperador = screen.getByText('operador@inmoa.com').closest('tr');
+    const selector = within(filaOperador).getByLabelText(/Rol de Operador Uno/i);
+    // Debe arrancar en el rol actual, no en la primera opción de la lista.
+    expect(selector.value).toBe('company_user');
+
+    await userEvent.selectOptions(selector, 'company_admin');
+
+    await waitFor(() => expect(setUserRole).toHaveBeenCalledWith(2, 'company_admin'));
+  });
+
+  it('no ofrece acciones sobre la propia cuenta', async () => {
+    vi.spyOn(api, 'listUsers').mockResolvedValue(usuarios);
+    vi.spyOn(api, 'listRoles').mockResolvedValue(roles);
+
+    render(<UsuariosPanel conectado companyId={1} usuarioId={1} />);
+    await waitFor(() => expect(screen.getByText('ericka@inmoa.com')).toBeTruthy());
+
+    const filaPropia = screen.getByText('ericka@inmoa.com').closest('tr');
+    expect(within(filaPropia).getByText('Tu cuenta')).toBeTruthy();
+    expect(within(filaPropia).queryByRole('button')).toBeNull();
+    expect(within(filaPropia).queryByRole('combobox')).toBeNull();
   });
 
   it('muestra el error del backend y no recarga', async () => {

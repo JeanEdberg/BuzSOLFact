@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Loader2, Users, CheckCircle2, AlertCircle, Mail, Shield } from 'lucide-react';
+import { UserPlus, Loader2, Users, CheckCircle2, AlertCircle, Mail, Shield, Power, PowerOff } from 'lucide-react';
 import { api } from './lib/api.js';
 
 const VACIO = { name: '', email: '', password: '', role_name: 'company_user', user_type: 'user' };
 
 // Alta y listado de usuarios de la empresa. Sin esto no había forma de dar
 // acceso a operadores sin entrar por consola.
-export default function UsuariosPanel({ conectado, companyId, esSuperAdmin = false }) {
+export default function UsuariosPanel({ conectado, companyId, usuarioId = null, esSuperAdmin = false }) {
   const [usuarios, setUsuarios] = useState([]);
   const [roles, setRoles] = useState([]);
   const [form, setForm] = useState(VACIO);
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState(null);
+  const [filaEnCurso, setFilaEnCurso] = useState(null);
 
   async function cargar() {
     if (!conectado) return;
@@ -50,6 +51,47 @@ export default function UsuariosPanel({ conectado, companyId, esSuperAdmin = fal
       setGuardando(false);
     }
   }
+
+  // Desactivar corta la sesión abierta del usuario en su siguiente petición.
+  async function alternarActivo(usuario) {
+    const activar = !usuario.active;
+    if (!activar && !window.confirm(`¿Desactivar a ${usuario.name}? Su sesión se cerrará de inmediato.`)) {
+      return;
+    }
+
+    setFilaEnCurso(usuario.id);
+    setMensaje(null);
+    try {
+      await api.setUserActive(usuario.id, activar);
+      setMensaje({
+        tipo: 'ok',
+        texto: activar ? `${usuario.name} puede volver a entrar.` : `${usuario.name} desactivado y su sesión cerrada.`,
+      });
+      await cargar();
+    } catch (error) {
+      setMensaje({ tipo: 'error', texto: error.message });
+    } finally {
+      setFilaEnCurso(null);
+    }
+  }
+
+  async function cambiarRol(usuario, roleName) {
+    if (!roleName || roleName === usuario.role) return;
+
+    setFilaEnCurso(usuario.id);
+    setMensaje(null);
+    try {
+      await api.setUserRole(usuario.id, roleName);
+      setMensaje({ tipo: 'ok', texto: `Rol de ${usuario.name} actualizado.` });
+      await cargar();
+    } catch (error) {
+      setMensaje({ tipo: 'error', texto: error.message });
+    } finally {
+      setFilaEnCurso(null);
+    }
+  }
+
+  const esPropia = (u) => usuarioId != null && u.id === usuarioId;
 
   const inputCls = 'w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-400/60';
 
@@ -132,6 +174,7 @@ export default function UsuariosPanel({ conectado, companyId, esSuperAdmin = fal
                 <th className="text-left px-5 py-2 font-medium">Correo</th>
                 <th className="text-left px-5 py-2 font-medium">Rol</th>
                 <th className="text-left px-5 py-2 font-medium">Estado</th>
+                <th className="text-right px-5 py-2 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -142,10 +185,27 @@ export default function UsuariosPanel({ conectado, companyId, esSuperAdmin = fal
                     <Mail size={13} className="text-slate-500" />{u.email}
                   </td>
                   <td className="px-5 py-2.5 text-slate-300">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Shield size={13} className="text-cyan-400" />
-                      {u.role_label ?? u.role}
-                    </span>
+                    {esPropia(u) ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Shield size={13} className="text-cyan-400" />
+                        {u.role_label ?? u.role}
+                      </span>
+                    ) : (
+                      <select
+                        aria-label={`Rol de ${u.name}`}
+                        value={u.role ?? ''}
+                        disabled={filaEnCurso === u.id}
+                        onChange={(e) => cambiarRol(u, e.target.value)}
+                        className="bg-slate-900 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200 disabled:opacity-40"
+                      >
+                        {u.role && !roles.some((r) => r.name === u.role) && (
+                          <option value={u.role}>{u.role_label ?? u.role}</option>
+                        )}
+                        {roles.map((r) => (
+                          <option key={r.name} value={r.name}>{r.label ?? r.name}</option>
+                        ))}
+                      </select>
+                    )}
                   </td>
                   <td className="px-5 py-2.5">
                     <span className={`text-xs px-2 py-0.5 rounded-full ${u.active
@@ -153,6 +213,25 @@ export default function UsuariosPanel({ conectado, companyId, esSuperAdmin = fal
                       : 'bg-slate-700 text-slate-400'}`}>
                       {u.active ? 'Activo' : 'Inactivo'}
                     </span>
+                  </td>
+                  <td className="px-5 py-2.5 text-right">
+                    {esPropia(u) ? (
+                      <span className="text-xs text-slate-500">Tu cuenta</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => alternarActivo(u)}
+                        disabled={filaEnCurso === u.id}
+                        className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border transition disabled:opacity-40 ${u.active
+                          ? 'border-red-500/30 text-red-300 hover:bg-red-950/40'
+                          : 'border-emerald-500/30 text-emerald-300 hover:bg-emerald-950/40'}`}
+                      >
+                        {filaEnCurso === u.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : u.active ? <PowerOff size={13} /> : <Power size={13} />}
+                        {u.active ? 'Desactivar' : 'Activar'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

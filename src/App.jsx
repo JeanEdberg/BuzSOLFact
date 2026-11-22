@@ -606,6 +606,7 @@ export default function App() {
   const [compras, setCompras] = useState(comprobantesCompra);
   const [fuente, setFuente] = useState('demo');
   const [token, setToken] = useState(null);
+  const [usuarioId, setUsuarioId] = useState(null);
   const [companyId, setCompanyId] = useState(null);
   const [empresas, setEmpresas] = useState([]);
   const [cargando, setCargando] = useState(false);
@@ -650,6 +651,7 @@ export default function App() {
   // Carga los datos del backend una vez que hay token (login o registro).
   async function cargarTrasSesion(sesion) {
     setToken(sesion.access_token ?? sesion.token ?? null);
+    setUsuarioId(sesion.user?.id ?? null);
 
     // El super administrador no trae empresa asignada: se listan las empresas y
     // se deja una seleccionada para poder emitir y consultar datos.
@@ -700,6 +702,7 @@ export default function App() {
     api.alSesionExpirada(() => {
       setSesionIniciada(false);
       setToken(null);
+      setUsuarioId(null);
       setCompanyId(null);
       setEmpresas([]);
       setVentas(comprobantesVenta);
@@ -719,7 +722,7 @@ export default function App() {
     setCompanyId(null);
     setEmpresas([]);
     api.setToken(null);
-    setAviso('Se restauraron los datos de demostración.');
+    setAviso('Sesión cerrada. Estás viendo los datos de ejemplo, no los de tu empresa.');
   }
 
   async function recargarCompras(id = companyId) {
@@ -850,7 +853,7 @@ export default function App() {
             onClick={volverADemo}
             className="w-full text-xs text-slate-400 hover:text-slate-200 underline"
           >
-            Restaurar datos demo
+            Salir y ver datos de ejemplo
           </button>
         </div>
       </aside>
@@ -1039,7 +1042,7 @@ export default function App() {
           {activeTab === 'accesos-sol' && <AccesosSol conectado={fuente === 'api'} />}
 
           {activeTab === 'usuarios' && (
-            <UsuariosPanel conectado={fuente === 'api'} companyId={companyId} />
+            <UsuariosPanel conectado={fuente === 'api'} companyId={companyId} usuarioId={usuarioId} />
           )}
 
           {activeTab === 'conexion' && (
