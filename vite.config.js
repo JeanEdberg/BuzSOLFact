@@ -1,8 +1,29 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// Vite sirve la raíz del proyecto tal cual: un .p12/.pem copiado aquí queda
+// descargable por HTTP aunque esté en .gitignore. Este plugin corta esas rutas
+// antes de que lleguen al middleware de ficheros estáticos.
+const SECRETOS = /\.(p12|pfx|pem|key|crt|jks)$/i;
+
+const bloquearSecretos = () => ({
+  name: 'bloquear-secretos',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const ruta = decodeURIComponent((req.url || '').split('?')[0]);
+      if (SECRETOS.test(ruta)) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end('No encontrado');
+        return;
+      }
+      next();
+    });
+  },
+});
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), bloquearSecretos()],
   // El entorno alojado sirve el dev server detrás de un proxy con otro Host.
   server: {
     port: 12000,
